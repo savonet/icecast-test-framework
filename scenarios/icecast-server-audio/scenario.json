@@ -1,0 +1,37 @@
+{
+  "description": "Three ffmpeg source clients push mp3, ogg/opus and ogg/flac into icecast.server; every listener gets a live remux of the encoded stream (dedicated_encoder=true).",
+  "processes": [
+    {
+      "name": "liquidsoap",
+      "server": true,
+      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
+      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+    },
+    {
+      "name": "feed-mp3",
+      "cmd": ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", "-re", "-stream_loop", "-1",
+              "-f", "concat", "-safe", "0", "-i", "${AUDIO_CONCAT}", "-vn", "-ar", "44100", "-ac", "2",
+              "-c:a", "libmp3lame", "-b:a", "128k", "-content_type", "audio/mpeg", "-f", "mp3",
+              "icecast://source:hackme@${HOST}:${PORT}/mp3"]
+    },
+    {
+      "name": "feed-opus",
+      "cmd": ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", "-re", "-stream_loop", "-1",
+              "-f", "concat", "-safe", "0", "-i", "${AUDIO_CONCAT}", "-vn", "-ar", "48000", "-ac", "2",
+              "-c:a", "libopus", "-b:a", "96k", "-content_type", "audio/ogg", "-f", "ogg",
+              "icecast://source:hackme@${HOST}:${PORT}/opus"]
+    },
+    {
+      "name": "feed-flac",
+      "cmd": ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", "-re", "-stream_loop", "-1",
+              "-f", "concat", "-safe", "0", "-i", "${AUDIO_CONCAT}", "-vn", "-ar", "44100", "-ac", "2",
+              "-c:a", "flac", "-content_type", "audio/ogg", "-f", "ogg",
+              "icecast://source:hackme@${HOST}:${PORT}/flac"]
+    }
+  ],
+  "mounts": [
+    {"path": "/mp3", "content_type": "audio/mpeg", "nominal_kbps": 128},
+    {"path": "/opus", "content_type": "audio/ogg", "nominal_kbps": 96},
+    {"path": "/flac", "content_type": "audio/ogg"}
+  ]
+}

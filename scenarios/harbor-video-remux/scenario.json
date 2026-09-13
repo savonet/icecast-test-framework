@@ -1,0 +1,14 @@
+{
+  "description": "liquidsoap loops a video file without decoding it and remuxes it to matroska once per listener (output.harbor with dedicated_encoder=true). Needs --video.",
+  "processes": [
+    {
+      "name": "liquidsoap",
+      "server": true,
+      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
+      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+    }
+  ],
+  "mounts": [
+    {"path": "/video", "content_type": "video/x-matroska"}
+  ]
+}

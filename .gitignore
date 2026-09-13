@@ -1,0 +1,4 @@
+/icetest
+/results/
+/assets/*
+!/assets/fetch.sh

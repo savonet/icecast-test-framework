@@ -1,0 +1,20 @@
+{
+  "description": "An ffmpeg source client pushes a matroska video into icecast.server without re-encoding; every listener gets its own remux (dedicated_encoder=true). Needs --video.",
+  "processes": [
+    {
+      "name": "liquidsoap",
+      "server": true,
+      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
+      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+    },
+    {
+      "name": "feed-video",
+      "cmd": ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning", "-re", "-stream_loop", "-1",
+              "-i", "${VIDEO}", "-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-content_type", "video/x-matroska", "-f", "matroska",
+              "icecast://source:hackme@${HOST}:${PORT}/video"]
+    }
+  ],
+  "mounts": [
+    {"path": "/video", "content_type": "video/x-matroska"}
+  ]
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,10 +11,14 @@ import (
 )
 
 func reportCmd(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: icetest report <run-dir>")
+	fs := flag.NewFlagSet("report", flag.ExitOnError)
+	merge := fs.String("merge", "", "serve.json recorded by icetest serve on the server box; its samples are folded into run.json")
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: icetest report [--merge serve.json] <run-dir>")
 	}
-	data, err := os.ReadFile(filepath.Join(args[0], "run.json"))
+	dir := fs.Arg(0)
+	data, err := os.ReadFile(filepath.Join(dir, "run.json"))
 	if err != nil {
 		return err
 	}
@@ -21,7 +26,16 @@ func reportCmd(args []string) error {
 	if err := json.Unmarshal(data, &r); err != nil {
 		return err
 	}
-	if err := writeReports(&r, args[0]); err != nil {
+	if *merge != "" {
+		if err := mergeServe(&r, *merge); err != nil {
+			return err
+		}
+		data, _ := json.MarshalIndent(r, "", " ")
+		if err := os.WriteFile(filepath.Join(dir, "run.json"), data, 0o644); err != nil {
+			return err
+		}
+	}
+	if err := writeReports(&r, dir); err != nil {
 		return err
 	}
 	fmt.Print(renderReport(&r))
@@ -51,7 +65,15 @@ func renderReport(r *Run) string {
 	w("- ramp: %d +%d up to %d, hold %s, churn %s, icy %.0f%%, stall %s, fail threshold %.1f%%\n",
 		c.Start, c.Step, c.Max, c.Hold, c.Listener.Churn, c.Listener.ICY*100, c.Listener.Stall, c.FailThreshold*100)
 	if c.Remote != "" {
-		w("- remote server: %s (not sampled)\n", c.Remote)
+		if r.ServerHost != nil {
+			w("- remote server: %s, %d cpus, %d MB, %s %s", c.Remote, r.ServerHost.CPUs, r.ServerHost.MemMB, r.ServerHost.Kernel, r.ServerHost.Arch)
+			if r.ServerHost.Liquidsoap != "" {
+				w(", %s", r.ServerHost.Liquidsoap)
+			}
+			w("\n")
+		} else {
+			w("- remote server: %s (not sampled; merge a serve.json with icetest report --merge)\n", c.Remote)
+		}
 	}
 	w("\n## Result\n\n")
 	switch {
@@ -62,13 +84,13 @@ func renderReport(r *Run) string {
 	default:
 		w("**Ceiling: %d listeners.** The next step failed.\n", r.Ceiling)
 	}
-	if len(r.Steps) > 0 {
-		last := r.Steps[len(r.Steps)-1]
-		if !last.Passed {
-			w("\nFailing step (%d listeners):\n", last.Target)
-			for _, reason := range last.Reasons {
+	for _, s := range r.Steps {
+		if !s.Passed {
+			w("\nFirst failing step (%d listeners):\n", s.Target)
+			for _, reason := range s.Reasons {
 				w("- %s\n", reason)
 			}
+			break
 		}
 	}
 	procs := procNames(r)

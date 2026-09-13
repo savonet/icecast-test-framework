@@ -1,16 +1,39 @@
 {
-  "description": "liquidsoap encodes one playlist to mp3, opus and flac and serves every listener itself through output.harbor with one shared encoder per mount.",
+  "description": "liquidsoap encodes one playlist to mp3 and opus and serves every listener itself through output.harbor. Each format is enabled with --with (MP3, OPUS, FLAC).",
   "processes": [
     {
       "name": "liquidsoap",
       "server": true,
-      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
-      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+      "prepare": [
+        [
+          "${LIQUIDSOAP}",
+          "--cache-only",
+          "main.liq"
+        ]
+      ],
+      "cmd": [
+        "${LIQUIDSOAP}",
+        "main.liq"
+      ]
     }
   ],
   "mounts": [
-    {"path": "/mp3", "content_type": "audio/mpeg", "nominal_kbps": 128},
-    {"path": "/opus", "content_type": "application/ogg", "nominal_kbps": 96},
-    {"path": "/flac", "content_type": "application/ogg"}
+    {
+      "path": "/mp3",
+      "content_type": "audio/mpeg",
+      "nominal_kbps": 128,
+      "when": "MP3"
+    },
+    {
+      "path": "/opus",
+      "content_type": "application/ogg",
+      "nominal_kbps": 96,
+      "when": "OPUS"
+    },
+    {
+      "path": "/flac",
+      "content_type": "application/ogg",
+      "when": "FLAC"
+    }
   ]
 }

@@ -2,3 +2,6 @@
 /results/
 /assets/*
 !/assets/fetch.sh
+/deploy/gcp/.terraform/
+/deploy/gcp/*.tfstate*
+/deploy/gcp/.terraform.lock.hcl

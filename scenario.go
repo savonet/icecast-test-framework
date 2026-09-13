@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ type Mount struct {
 	Weight      float64 `json:"weight,omitempty"`       // share of the listener budget, default 1
 	ContentType string  `json:"content_type,omitempty"` // when set, a different Content-Type fails the listener
 	NominalKbps float64 `json:"nominal_kbps,omitempty"` // when set, a median rate below 90% of it fails the step
+	When        string  `json:"when,omitempty"`         // only with --with <name>
 }
 
 // Process is a program the runner manages for the duration of the run.
@@ -22,6 +24,7 @@ type Process struct {
 	Prepare [][]string `json:"prepare,omitempty"` // run to completion before Cmd starts
 	Cmd     []string   `json:"cmd"`
 	Server  bool       `json:"server,omitempty"` // its log is scanned for alerts
+	When    string     `json:"when,omitempty"`   // only with --with <name>
 }
 
 type Scenario struct {
@@ -42,7 +45,9 @@ var defaultAlertPatterns = []string{
 	"failed while streaming",
 }
 
-func loadScenario(dir string) (*Scenario, error) {
+// loadScenario reads a scenario, keeping only the mounts and processes whose
+// "when" gate is absent or named in with.
+func loadScenario(dir string, with []string) (*Scenario, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "scenario.json"))
 	if err != nil {
 		return nil, err
@@ -51,6 +56,12 @@ func loadScenario(dir string) (*Scenario, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("%s: %w", dir, err)
 	}
+	enabled := map[string]bool{}
+	for _, w := range with {
+		enabled[w] = true
+	}
+	s.Mounts = slices.DeleteFunc(s.Mounts, func(m Mount) bool { return m.When != "" && !enabled[m.When] })
+	s.Processes = slices.DeleteFunc(s.Processes, func(p Process) bool { return p.When != "" && !enabled[p.When] })
 	if len(s.Mounts) == 0 {
 		return nil, fmt.Errorf("%s: no mounts", dir)
 	}

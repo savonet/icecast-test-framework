@@ -36,6 +36,8 @@ type Config struct {
 	NoCanary       bool          `json:"no_canary"`
 	CanaryLenient  bool          `json:"canary_lenient"`
 	IgnoreAlerts   bool          `json:"ignore_alerts"`
+	CanaryRetries  int           `json:"canary_retries"`
+	With           []string      `json:"with,omitempty"` // enabled optional mounts and processes
 	Listener       ListenerOptions
 	Liquidsoap     string `json:"liquidsoap"`
 	AudioDir       string `json:"audio_dir"`
@@ -95,12 +97,12 @@ type Run struct {
 	Ceiling     int          `json:"ceiling"` // largest passing target, 0 if none
 	MaxReached  bool         `json:"max_reached"`
 	Samples     []Sample     `json:"samples"`
-	SystemCPU   []Sample     `json:"-"`
+	SysCPU      []timedFloat `json:"system_cpu"`
 	Ticks       []TickStat   `json:"ticks"`
 	Alerts      []Alert      `json:"alerts"`
 	Canaries    []Canary     `json:"canaries"`
 	Events      []string     `json:"events"`
-	sysCPU      []timedFloat
+	ServerHost  *HostInfo    `json:"server_host,omitempty"` // merged from icetest serve
 }
 
 type timedFloat struct {
@@ -133,6 +135,9 @@ func runCmd(args []string) error {
 	fs.BoolVar(&c.NoCanary, "no-canary", false, "skip the ffmpeg canaries")
 	fs.BoolVar(&c.CanaryLenient, "canary-lenient", false, "canaries tolerate decode errors after a successful open")
 	fs.BoolVar(&c.IgnoreAlerts, "ignore-alerts", false, "server log alerts do not fail a step")
+	fs.IntVar(&c.CanaryRetries, "canary-retries", 1, "extra attempts for a canary that fails to open the stream")
+	var with string
+	fs.StringVar(&with, "with", "", "comma-separated optional parts of the scenario to enable, e.g. FLAC; exported as ICETEST_<NAME>=1")
 	fs.StringVar(&c.Liquidsoap, "liquidsoap", "liquidsoap", "liquidsoap binary, exported as ${LIQUIDSOAP}")
 	fs.StringVar(&c.AudioDir, "audio", "", "directory of audio files, exported as ${AUDIO_DIR}")
 	fs.StringVar(&c.Video, "video", "", "video file, exported as ${VIDEO}")
@@ -154,6 +159,9 @@ func runCmd(args []string) error {
 		return errors.New("usage: icetest run [flags] <scenario-dir>")
 	}
 	c.Scenario = fs.Arg(0)
+	if with != "" {
+		c.With = strings.Split(with, ",")
+	}
 	l.Tick = time.Second
 	l.TLS = c.TLS
 	if binds != "" {
@@ -163,11 +171,15 @@ func runCmd(args []string) error {
 	if l.Host == "" {
 		l.Host = fmt.Sprintf("127.0.0.1:%d", c.Port)
 	}
+	// A listener's rate is measured once it is older than twice the window.
+	if minHold := time.Duration(2*l.Window+5) * l.Tick; c.Hold < minHold {
+		return fmt.Errorf("--hold %s is too short to measure listener rates over a %d s window; use at least %s", c.Hold, l.Window, minHold)
+	}
 	return run(&c)
 }
 
 func run(c *Config) error {
-	sc, err := loadScenario(c.Scenario)
+	sc, err := loadScenario(c.Scenario, c.With)
 	if err != nil {
 		return err
 	}
@@ -179,21 +191,12 @@ func run(c *Config) error {
 		return err
 	}
 	raiseNofile()
-	host, port, _ := strings.Cut(c.Listener.Host, ":")
-	vars := Vars{
-		"PORT": port, "HOST": host, "LIQUIDSOAP": c.Liquidsoap, "AUDIO_DIR": c.AudioDir, "VIDEO": c.Video,
-		"RUN_DIR": runDir, "SCENARIO_DIR": sc.Dir, "AUDIO_CONCAT": filepath.Join(runDir, "audio-concat.txt"),
-	}
-	if c.AudioDir != "" {
-		if err := writeConcatList(c.AudioDir, vars["AUDIO_CONCAT"]); err != nil {
-			return err
-		}
-	}
-	if err := renderTemplates(sc, vars, runDir); err != nil {
+	vars, err := prepareRunDir(c, sc, runDir)
+	if err != nil {
 		return err
 	}
 	r := &Run{Scenario: sc.Name, Description: sc.Description, Config: *c, Started: time.Now(), Host: hostInfo(c),
-		Steps: []StepResult{}, Samples: []Sample{}, Ticks: []TickStat{}, Alerts: []Alert{}, Canaries: []Canary{}, Events: []string{}}
+		Steps: []StepResult{}, Samples: []Sample{}, SysCPU: []timedFloat{}, Ticks: []TickStat{}, Alerts: []Alert{}, Canaries: []Canary{}, Events: []string{}}
 	fmt.Printf("run %s -> %s\n", sc.Name, runDir)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -205,20 +208,9 @@ func run(c *Config) error {
 	var scanner *logScanner
 	defer func() { stopProcesses(procs) }()
 	if c.Remote == "" {
-		for _, p := range sc.Processes {
-			m, err := startProcess(p, vars, sc.Dir, runDir)
-			if err != nil {
-				return err
-			}
-			procs = append(procs, m)
-			sampler.add(p.Name, m.cmd.Process.Pid)
-			if p.Server {
-				scanner = &logScanner{path: m.logPath, patterns: sc.AlertPatterns, limit: 200}
-				// Source clients started next need something to connect to.
-				if err := waitForPort(ctx, c, m); err != nil {
-					return err
-				}
-			}
+		procs, scanner, err = startScenario(ctx, c, sc, vars, runDir, sampler)
+		if err != nil {
+			return err
 		}
 	}
 	if err := waitForMounts(ctx, c, sc, procs); err != nil {
@@ -249,7 +241,7 @@ func run(c *Config) error {
 				mu.Lock()
 				r.Samples = append(r.Samples, samples...)
 				r.Alerts = append(r.Alerts, alerts...)
-				r.sysCPU = append(r.sysCPU, timedFloat{now, cpu})
+				r.SysCPU = append(r.SysCPU, timedFloat{now, cpu})
 				mu.Unlock()
 			}
 		}
@@ -283,10 +275,16 @@ func run(c *Config) error {
 				wg.Add(1)
 				go func(m Mount) {
 					defer wg.Done()
-					cn := runCanary(ctx, url+m.Path, i, m.Path, c.CanaryDuration, !c.CanaryLenient)
-					cmu.Lock()
-					canaries = append(canaries, cn)
-					cmu.Unlock()
+					// A join can land on a stream boundary; a retry tells that apart from a mount that is broken.
+					for attempt := 0; attempt <= c.CanaryRetries; attempt++ {
+						cn := runCanary(ctx, url+m.Path, i, m.Path, c.CanaryDuration, !c.CanaryLenient)
+						cmu.Lock()
+						canaries = append(canaries, cn)
+						cmu.Unlock()
+						if cn.OK || !strings.Contains(cn.Error, "Error opening input") {
+							break
+						}
+					}
 				}(m)
 			}
 			wg.Wait()
@@ -339,6 +337,40 @@ func run(c *Config) error {
 	fmt.Print("\n" + renderReport(r))
 	fmt.Printf("report: %s\n", filepath.Join(runDir, "report.html"))
 	return nil
+}
+
+// prepareRunDir builds the scenario variables and the generated inputs
+// (concat playlist, rendered templates) inside runDir.
+func prepareRunDir(c *Config, sc *Scenario, runDir string) (Vars, error) {
+	// Scenario processes run inside the scenario directory, so user paths
+	// must not stay relative to where icetest was started.
+	for _, path := range []*string{&c.AudioDir, &c.Video} {
+		if *path == "" {
+			continue
+		}
+		abs, err := filepath.Abs(*path)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(abs); err != nil {
+			return nil, err
+		}
+		*path = abs
+	}
+	host, port, _ := strings.Cut(c.Listener.Host, ":")
+	vars := Vars{
+		"PORT": port, "HOST": host, "LIQUIDSOAP": c.Liquidsoap, "AUDIO_DIR": c.AudioDir, "VIDEO": c.Video,
+		"RUN_DIR": runDir, "SCENARIO_DIR": sc.Dir, "AUDIO_CONCAT": filepath.Join(runDir, "audio-concat.txt"),
+	}
+	for _, w := range c.With {
+		vars[w] = "1"
+	}
+	if c.AudioDir != "" {
+		if err := writeConcatList(c.AudioDir, vars["AUDIO_CONCAT"]); err != nil {
+			return nil, err
+		}
+	}
+	return vars, renderTemplates(sc, vars, runDir)
 }
 
 func procSummary(s StepResult) string {
@@ -406,7 +438,7 @@ func evaluateStep(r *Run, c *Config, sc *Scenario, i, target int, start, end tim
 			ms.MedianKbps = median(medians) * 8 / 1000
 			ms.MinKbps = median(mins) * 8 / 1000
 		}
-		if m.NominalKbps > 0 && ms.MedianKbps < 0.9*m.NominalKbps {
+		if len(medians) > 0 && m.NominalKbps > 0 && ms.MedianKbps < 0.9*m.NominalKbps {
 			s.Reasons = append(s.Reasons, fmt.Sprintf("%s median %.0f kbps below nominal %.0f", m.Path, ms.MedianKbps, m.NominalKbps))
 		}
 		if ms.MetaBad > 0 {
@@ -451,6 +483,39 @@ func evaluateStep(r *Run, c *Config, sc *Scenario, i, target int, start, end tim
 	s.TTFBp95ms = percentile(ttfbs, 0.95)
 	s.TTFBp99ms = percentile(ttfbs, 0.99)
 
+	fillSampleStats(&s, r, start, end)
+	lastByMount := map[string]Canary{}
+	for _, cn := range canaries {
+		if cn.OK {
+			s.CanaryOK++
+		} else {
+			s.CanaryFail++
+		}
+		if prev, seen := lastByMount[cn.Mount]; !seen || cn.Start.After(prev.Start) {
+			lastByMount[cn.Mount] = cn
+		}
+	}
+	for _, cn := range lastByMount {
+		if !cn.OK {
+			s.Reasons = append(s.Reasons, fmt.Sprintf("canary %s: %s", cn.Mount, firstLine(cn.Error)))
+		}
+	}
+	if s.Alerts > 0 && !c.IgnoreAlerts {
+		s.Reasons = append(s.Reasons, fmt.Sprintf("%d server log alerts", s.Alerts))
+	}
+	for _, p := range procs {
+		if err, gone := p.exited(); gone {
+			s.Reasons = append(s.Reasons, fmt.Sprintf("process %s exited: %v", p.name, err))
+		}
+	}
+	s.Passed = len(s.Reasons) == 0
+	return s
+}
+
+// fillSampleStats derives the per-process, system CPU and alert figures of a
+// step from the run's samples within the step window.
+func fillSampleStats(s *StepResult, r *Run, start, end time.Time) {
+	s.Processes = map[string]ProcStep{}
 	counts := map[string]int{}
 	for _, sm := range r.Samples {
 		if sm.T.Before(start) || sm.T.After(end) {
@@ -471,38 +536,22 @@ func evaluateStep(r *Run, c *Config, sc *Scenario, i, target int, start, end tim
 	}
 	var cpuSum float64
 	var cpuN int
-	for _, v := range r.sysCPU {
+	for _, v := range r.SysCPU {
 		if !v.T.Before(start) && !v.T.After(end) {
 			cpuSum += v.V
 			cpuN++
 		}
 	}
+	s.SystemCPU = 0
 	if cpuN > 0 {
 		s.SystemCPU = cpuSum / float64(cpuN)
 	}
-	for _, cn := range canaries {
-		if cn.OK {
-			s.CanaryOK++
-		} else {
-			s.CanaryFail++
-			s.Reasons = append(s.Reasons, fmt.Sprintf("canary %s: %s", cn.Mount, firstLine(cn.Error)))
-		}
-	}
+	s.Alerts = 0
 	for _, a := range r.Alerts {
 		if !a.T.Before(start) && !a.T.After(end) {
 			s.Alerts++
 		}
 	}
-	if s.Alerts > 0 && !c.IgnoreAlerts {
-		s.Reasons = append(s.Reasons, fmt.Sprintf("%d server log alerts", s.Alerts))
-	}
-	for _, p := range procs {
-		if err, gone := p.exited(); gone {
-			s.Reasons = append(s.Reasons, fmt.Sprintf("process %s exited: %v", p.name, err))
-		}
-	}
-	s.Passed = len(s.Reasons) == 0
-	return s
 }
 
 func firstLine(s string) string {
@@ -629,6 +678,29 @@ func waitForMounts(ctx context.Context, c *Config, sc *Scenario, procs []*manage
 		}
 	}
 	return nil
+}
+
+// startScenario launches every process of the scenario in order, registers it
+// with the sampler, and returns the log scanner of the server process.
+func startScenario(ctx context.Context, c *Config, sc *Scenario, vars Vars, runDir string, sampler *procSampler) ([]*managed, *logScanner, error) {
+	var procs []*managed
+	var scanner *logScanner
+	for _, p := range sc.Processes {
+		m, err := startProcess(p, vars, sc.Dir, runDir)
+		if err != nil {
+			return procs, nil, err
+		}
+		procs = append(procs, m)
+		sampler.add(p.Name, m.cmd.Process.Pid)
+		if p.Server {
+			scanner = &logScanner{path: m.logPath, patterns: sc.AlertPatterns, limit: 200}
+			// Source clients started next need something to connect to.
+			if err := waitForPort(ctx, c, m); err != nil {
+				return procs, nil, err
+			}
+		}
+	}
+	return procs, scanner, nil
 }
 
 func waitForPort(ctx context.Context, c *Config, server *managed) error {

@@ -14,6 +14,8 @@ func main() {
 	switch os.Args[1] {
 	case "run":
 		err = runCmd(os.Args[2:])
+	case "serve":
+		err = serveCmd(os.Args[2:])
 	case "report":
 		err = reportCmd(os.Args[2:])
 	default:
@@ -28,7 +30,9 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   icetest run [flags] <scenario-dir>   start the scenario, ramp listeners, write results/<scenario>/<time>/
-  icetest report <run-dir>             re-render report.md and report.html from run.json
+  icetest serve [flags] <scenario-dir>  start the scenario and record its processes until stopped (server box of a two-machine run)
+  icetest report [--merge serve.json] <run-dir>
+                                       re-render report.md and report.html from run.json, folding in a serve recording
 run -h lists the flags.`)
 	os.Exit(2)
 }

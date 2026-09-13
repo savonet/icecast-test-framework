@@ -1,15 +1,34 @@
 {
-  "description": "liquidsoap encodes one playlist to mp3 and AAC (ADTS) through %ffmpeg and serves every listener itself through output.harbor with one shared encoder per mount.",
+  "description": "liquidsoap encodes one playlist to mp3 and AAC (ADTS) through %ffmpeg and serves every listener itself through output.harbor. Each format is enabled with --with (MP3, AAC).",
   "processes": [
     {
       "name": "liquidsoap",
       "server": true,
-      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
-      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+      "prepare": [
+        [
+          "${LIQUIDSOAP}",
+          "--cache-only",
+          "main.liq"
+        ]
+      ],
+      "cmd": [
+        "${LIQUIDSOAP}",
+        "main.liq"
+      ]
     }
   ],
   "mounts": [
-    {"path": "/mp3", "content_type": "audio/mpeg", "nominal_kbps": 128},
-    {"path": "/aac", "content_type": "audio/aac", "nominal_kbps": 128}
+    {
+      "path": "/mp3",
+      "content_type": "audio/mpeg",
+      "nominal_kbps": 128,
+      "when": "MP3"
+    },
+    {
+      "path": "/aac",
+      "content_type": "audio/aac",
+      "nominal_kbps": 128,
+      "when": "AAC"
+    }
   ]
 }

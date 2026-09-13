@@ -14,7 +14,7 @@ point, but any server that speaks Icecast-style HTTP streaming can be measured.
 ```sh
 go build -o icetest .
 ./icetest run --liquidsoap /path/to/liquidsoap --audio /path/to/music \
-  --start 500 --step 500 --max 10000 --hold 60s scenarios/harbor-audio
+  --with MP3,OPUS --start 500 --step 500 --max 10000 --hold 60s scenarios/harbor-audio
 ```
 
 Results land in `results/<scenario>/<timestamp>/`:
@@ -79,7 +79,9 @@ A step fails when:
 - a canary could not open or decode the stream. Canaries are `ffmpeg -xerror`
   runs, so they also prove that a listener joining mid-stream gets a playable
   stream from its very first bytes, which is the point of per-listener
-  remuxing. `--canary-lenient` drops `-xerror`, tolerating a stream whose
+  remuxing. A canary that cannot open the stream is retried
+  `--canary-retries` times (default 1), since a join can land on a track
+  boundary of a chained ogg stream; every attempt is kept in the report. `--canary-lenient` drops `-xerror`, tolerating a stream whose
   first bytes fall mid-frame as long as ffmpeg can open it and keep decoding.
 - the server log matched an alert pattern (liquidsoap's clock catch-up
   warning, source leak warning, ...; `--ignore-alerts` demotes these to a
@@ -132,6 +134,12 @@ environment as `ICETEST_<VAR>`:
 | `RUN_DIR` | the results directory of this run |
 | `SCENARIO_DIR` | the scenario directory |
 
+A mount or process with `"when": "MP3"` is only part of the run when
+`--with MP3` is passed (to both `run` and `serve`, comma-separated for
+several); the name is exported to the scripts as `ICETEST_MP3=1` so they can
+gate an output on it. Every format of the audio scenarios is optional this
+way, so a run measures exactly the mix of mounts a deployment serves.
+
 Templates are rendered into the run directory with the `.tmpl` suffix
 dropped. The process marked `server` has its log scanned for
 `alert_patterns` (defaults cover liquidsoap's clock and source-leak warnings).
@@ -141,19 +149,19 @@ Shipped scenarios:
 
 | scenario | what is measured |
 |---|---|
-| `harbor-audio` | liquidsoap encodes mp3, opus and ogg/flac once each and serves the listeners itself (`output.harbor`) |
-| `harbor-audio-ffmpeg` | mp3 and AAC (ADTS) through `%ffmpeg`, the header-less formats a shared ffmpeg encoder can serve |
-| `icecast-server-audio` | three ffmpeg source clients push into `icecast.server`; each listener gets a live remux (`dedicated_encoder=true`) |
-| `icecast-reference` | the same three encoders pushed with `output.icecast` into a real Icecast 2.4 serving the listeners |
-| `icecast-reference-ffmpeg` | the reference with the `%ffmpeg` mp3 and AAC encoders |
+| `harbor-audio` | liquidsoap encodes and serves the listeners itself (`output.harbor`); `--with MP3,OPUS,FLAC` picks the mounts |
+| `harbor-audio-ffmpeg` | the same through `%ffmpeg`; `--with MP3,AAC` |
+| `icecast-server-audio` | ffmpeg source clients push into `icecast.server`; each listener gets a live remux (`dedicated_encoder=true`); `--with MP3,OPUS,FLAC` |
+| `icecast-reference` | the same encoders pushed with `output.icecast` into a real Icecast 2.4 serving the listeners; `--with MP3,OPUS,FLAC` |
+| `icecast-reference-ffmpeg` | the reference with the `%ffmpeg` encoders; `--with MP3,AAC` |
 | `harbor-video-remux` | liquidsoap loops a video file without decoding it and remuxes it to matroska per listener |
 | `icecast-server-video` | an ffmpeg source client pushes matroska into `icecast.server`, remuxed per listener |
 
 Flac is served as ogg/flac in the audio scenarios: liquidsoap's native `%flac`
 encoder has no stream header, so a listener joining a shared native-flac
 mount mid-stream never sees the `fLaC` marker and strict decoders refuse it.
-The `%ffmpeg` scenarios stick to mp3 and AAC for the same reason: a shared
-ffmpeg encoder cannot replay the ogg header pages to a late joiner, so the
+The `%ffmpeg` scenarios stick to mp3 and AAC for the same reason: the
+`%ffmpeg` encoder cannot replay the ogg header pages to a late joiner, so the
 ogg family stays with the native encoders.
 
 ## Two machines
@@ -163,15 +171,43 @@ lowers the ceiling. For a credible number run the server on its own machine
 and the listeners elsewhere:
 
 ```sh
-# server box: start the scenario by hand, e.g.
-ICETEST_PORT=8000 ICETEST_AUDIO_DIR=/music liquidsoap scenarios/harbor-audio/main.liq
+# server box: start the scenario and record its processes until stopped
+./icetest serve --liquidsoap liquidsoap --audio /music scenarios/harbor-audio
 # load box:
 ./icetest run --remote server:8000 --start 1000 --step 1000 --max 20000 scenarios/harbor-audio
+# afterwards, on either box: fold the server recording into the run
+./icetest report --merge results/harbor-audio/serve-<time>/serve.json results/harbor-audio/<time>
 ```
 
-With `--remote` no process is started or sampled; the report carries listener
-side numbers only, and the server's CPU and memory have to be read on the
-server box.
+`serve` writes a `ready` marker once every mount is up and `serve.json` when
+it receives SIGINT or SIGTERM. The merge recomputes every process figure of
+each step from the server's samples, so the report reads as if both had run
+on one machine.
+
+## Google Cloud
+
+`deploy/bench.sh` does the two-machine run on two Spot VMs in one zone,
+talking over internal addresses, and destroys them afterwards. Nothing is
+scheduled; each verb is a command you type.
+
+```sh
+export GCP_PROJECT=my-project
+AUDIO=/path/to/music deploy/bench.sh up   # two c3-standard-8 Debian 13 boxes, liquidsoap from the rolling release
+WITH=MP3 deploy/bench.sh run harbor-audio icecast-reference icecast-server-audio
+deploy/bench.sh down                       # tofu destroy
+```
+
+Needs `gcloud` logged in, `tofu`, and `go`. `up` provisions both boxes through
+`deploy/provision.sh` (the liquidsoap `.deb` of `LIQUIDSOAP_RELEASE`, ffmpeg,
+icecast2, socket limits), cross-builds `icetest`, and copies it with the
+scenarios to both boxes and the audio set to the server. `run` serves each scenario on the server box, ramps
+from the load box with `RUN_FLAGS`, fetches both result directories into
+`results/cloud/<scenario>/<time>/` and merges them. `MACHINE_TYPE`, `GCP_ZONE`,
+`SPOT` and `VIDEO` are the other knobs; see the header of the script.
+
+The ceiling in the cloud is usually the NIC: egress is 2 Gbit/s per vCPU, so
+an 8 vCPU box tops out near 16 Gbit/s, about 45k listeners on the three audio
+mounts. Pick a larger shape for more.
 
 ## Load-generator limits
 

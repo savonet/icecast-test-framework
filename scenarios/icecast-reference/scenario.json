@@ -1,22 +1,55 @@
 {
-  "description": "Reference point: liquidsoap encodes the same three formats and pushes them with output.icecast into a real Icecast 2.4 serving the listeners.",
-  "templates": ["icecast.xml.tmpl"],
-  "alert_patterns": ["EROR", "Client limit", "Too many open files"],
+  "description": "Reference point: liquidsoap encodes the same formats and pushes them with output.icecast into a real Icecast 2.4 serving the listeners. Each format is enabled with --with (MP3, OPUS, FLAC).",
+  "templates": [
+    "icecast.xml.tmpl"
+  ],
+  "alert_patterns": [
+    "EROR",
+    "Client limit",
+    "Too many open files"
+  ],
   "processes": [
     {
       "name": "icecast",
       "server": true,
-      "cmd": ["icecast", "-c", "${RUN_DIR}/icecast.xml"]
+      "cmd": [
+        "icecast",
+        "-c",
+        "${RUN_DIR}/icecast.xml"
+      ]
     },
     {
       "name": "liquidsoap",
-      "prepare": [["${LIQUIDSOAP}", "--cache-only", "feed.liq"]],
-      "cmd": ["${LIQUIDSOAP}", "feed.liq"]
+      "prepare": [
+        [
+          "${LIQUIDSOAP}",
+          "--cache-only",
+          "feed.liq"
+        ]
+      ],
+      "cmd": [
+        "${LIQUIDSOAP}",
+        "feed.liq"
+      ]
     }
   ],
   "mounts": [
-    {"path": "/mp3", "content_type": "audio/mpeg", "nominal_kbps": 128},
-    {"path": "/opus", "content_type": "application/ogg", "nominal_kbps": 96},
-    {"path": "/flac", "content_type": "application/ogg"}
+    {
+      "path": "/mp3",
+      "content_type": "audio/mpeg",
+      "nominal_kbps": 128,
+      "when": "MP3"
+    },
+    {
+      "path": "/opus",
+      "content_type": "application/ogg",
+      "nominal_kbps": 96,
+      "when": "OPUS"
+    },
+    {
+      "path": "/flac",
+      "content_type": "application/ogg",
+      "when": "FLAC"
+    }
   ]
 }

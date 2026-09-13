@@ -1,5 +1,5 @@
 {
-  "description": "Reference point for the %ffmpeg encoders: liquidsoap encodes mp3 and AAC (ADTS) and pushes them with output.icecast into a real Icecast 2.4 serving the listeners.",
+  "description": "Reference point for the %ffmpeg encoders: liquidsoap encodes mp3 and AAC (ADTS) and pushes them with output.icecast into a real Icecast 2.4 serving the listeners. Each format is enabled with --with (MP3, AAC).",
   "templates": [
     "icecast.xml.tmpl"
   ],
@@ -37,12 +37,14 @@
     {
       "path": "/mp3",
       "content_type": "audio/mpeg",
-      "nominal_kbps": 128
+      "nominal_kbps": 128,
+      "when": "MP3"
     },
     {
       "path": "/aac",
       "content_type": "audio/aac",
-      "nominal_kbps": 128
+      "nominal_kbps": 128,
+      "when": "AAC"
     }
   ]
 }

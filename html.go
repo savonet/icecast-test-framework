@@ -23,57 +23,43 @@ const reportPage = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <style>
-:root { --bg:#f6f7f9; --panel:#ffffff; --ink:#1c2128; --muted:#5b6472; --line:#e2e5ea; --grid:#edeff2; --accent:#1f6feb; --pass:#1a7f37; --pass-bg:#eaf5ee; --fail:#b42318; --fail-bg:#fbeeec; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --panel:#161b22; --ink:#e6e9ee; --muted:#98a2b3; --line:#2a313b; --grid:#1f252d; --accent:#4c8dff; --pass:#3fb950; --pass-bg:#12261a; --fail:#f0776a; --fail-bg:#2d1512; } }
-:root[data-theme="dark"] { --bg:#0f1318; --panel:#161b22; --ink:#e6e9ee; --muted:#98a2b3; --line:#2a313b; --grid:#1f252d; --accent:#4c8dff; --pass:#3fb950; --pass-bg:#12261a; --fail:#f0776a; --fail-bg:#2d1512; }
+:root { --bg:#ffffff; --ink:#222222; --muted:#666666; --line:#cccccc; --grid:#e8e8e8; --head:#f2f2f2; --pass:#1a7f37; --fail:#c62828; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#1e1e1e; --ink:#e0e0e0; --muted:#9a9a9a; --line:#444444; --grid:#333333; --head:#2a2a2a; --pass:#4caf50; --fail:#ef5350; } }
+:root[data-theme="dark"] { --bg:#1e1e1e; --ink:#e0e0e0; --muted:#9a9a9a; --line:#444444; --grid:#333333; --head:#2a2a2a; --pass:#4caf50; --fail:#ef5350; }
 * { box-sizing:border-box; }
-body { margin:0; padding-block:2rem 4rem; padding-inline:1.25rem; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+body { margin:0; padding-block:1.5rem 3rem; padding-inline:1.25rem; font:14px/1.5 Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); }
 main { max-width:1180px; margin-inline:auto; }
-.mono, td, th, .tile b, .legend, .axis { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric:tabular-nums; }
-h1 { font-size:1.6rem; line-height:1.2; margin:0; text-wrap:balance; }
-h2 { font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:2.5rem 0 .75rem; }
-.eyebrow { font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 .35rem; }
-.desc { max-width:65ch; margin:.5rem 0 0; color:var(--muted); }
-.meta { display:flex; flex-wrap:wrap; gap:.25rem 1.5rem; margin:1rem 0 0; padding:0; list-style:none; font-size:.85rem; color:var(--muted); }
-.meta span { color:var(--ink); }
-.verdict { margin:1.5rem 0 0; padding:.9rem 1.1rem; border-left:4px solid var(--pass); background:var(--pass-bg); font-size:1.05rem; }
-.verdict.fail { border-color:var(--fail); background:var(--fail-bg); }
-.verdict ul { margin:.5rem 0 0; padding-left:1.2rem; font-size:.95rem; }
-.tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:1.25rem; }
-.tile { background:var(--panel); padding:.9rem 1rem; }
-.tile small { display:block; font-size:.75rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
-.tile b { display:block; font-size:1.7rem; font-weight:600; line-height:1.2; margin-top:.2rem; }
-.tile i { font-style:normal; font-size:.8rem; color:var(--muted); }
-.wrap { overflow-x:auto; border:1px solid var(--line); background:var(--panel); }
-table { border-collapse:collapse; width:100%; font-size:.85rem; }
-th, td { padding:.45rem .65rem; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
-th:first-child, td:first-child { text-align:left; } tr:last-child td { border-bottom:0; }
-th { color:var(--muted); font-weight:500; background:var(--bg); position:sticky; top:0; }
-.pass { color:var(--pass); font-weight:600; } .fail { color:var(--fail); font-weight:600; }
-.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:1.25rem; }
-.chart { background:var(--panel); border:1px solid var(--line); padding:.9rem 1rem .6rem; }
-.chart h3 { font-size:.9rem; font-weight:600; margin:0 0 .4rem; }
+h1 { font-size:1.5rem; margin:0 0 .25rem; } h2 { font-size:1.1rem; margin:2rem 0 .5rem; } h3 { font-size:.95rem; margin:0 0 .3rem; }
+p { margin:.25rem 0; } .muted { color:var(--muted); }
+.meta { margin:.75rem 0 0; padding:0; list-style:none; font-size:.9rem; } .meta li { margin:.1rem 0; } .meta b { font-weight:normal; color:var(--muted); display:inline-block; min-width:9em; }
+.verdict { margin:1.25rem 0; font-size:1rem; } .verdict ul { margin:.4rem 0 0; padding-left:1.4rem; }
+.wrap { overflow-x:auto; }
+table { border-collapse:collapse; font-size:.85rem; font-variant-numeric:tabular-nums; }
+th, td { padding:.3rem .55rem; border:1px solid var(--line); text-align:right; white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; } th { background:var(--head); font-weight:bold; }
+.summary td:first-child { color:var(--muted); }
+.pass { color:var(--pass); font-weight:bold; } .fail { color:var(--fail); font-weight:bold; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:1.5rem 2rem; }
 svg { width:100%; height:auto; display:block; max-width:100%; }
-.axis { font-size:10px; fill:var(--muted); } .gridline { stroke:var(--grid); } .marker { stroke:var(--muted); stroke-dasharray:3 3; } .marker.fail { stroke:var(--fail); }
-.legend { display:flex; flex-wrap:wrap; gap:.25rem 1rem; font-size:.75rem; color:var(--muted); margin-top:.35rem; }
-.legend i { display:inline-block; width:10px; height:3px; margin-right:.35rem; vertical-align:middle; }
-.note { font-size:.85rem; color:var(--muted); max-width:65ch; margin:0 0 .9rem; }
-ul.diag { padding-left:1.2rem; font-size:.9rem; } code { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.85em; }
+.axis { font-size:10px; fill:var(--muted); font-family:Arial, Helvetica, sans-serif; } .gridline { stroke:var(--grid); } .marker { stroke:var(--muted); stroke-dasharray:3 3; } .marker.fail { stroke:var(--fail); }
+.legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; } .legend span { margin-right:1rem; }
+.legend i { display:inline-block; width:12px; height:3px; margin-right:.35rem; vertical-align:middle; }
+ul.diag { padding-left:1.4rem; font-size:.9rem; } code { font-family:Consolas, Menlo, monospace; font-size:.85em; }
 @media (max-width: 500px) { .grid { grid-template-columns:1fr; } body { padding-inline:1rem; } }
 </style>
 </head>
 <body>
 <main>
-<p class="eyebrow">icetest listener ramp</p>
 <h1 id="title"></h1>
-<p class="desc" id="desc"></p>
+<p class="muted" id="desc"></p>
 <ul class="meta" id="meta"></ul>
 <div id="verdict" class="verdict"></div>
-<div class="tiles" id="tiles"></div>
+<h2>Summary</h2>
+<div class="wrap"><table id="summary" class="summary"></table></div>
 <h2>Steps</h2>
 <div class="wrap"><table id="steps"></table></div>
 <h2>Over time</h2>
-<p class="note">Dashed lines mark the start of each step, labelled with its target. A red marker is the step that failed. Time is seconds since the run started.</p>
+<p class="muted">Dashed lines mark the start of each step, labelled with its target; a red one is the step that failed. Time is seconds since the run started.</p>
 <div class="grid" id="charts"></div>
 <h2 id="mounts-title">Per mount</h2>
 <div class="wrap"><table id="mounts"></table></div>
@@ -81,7 +67,7 @@ ul.diag { padding-left:1.2rem; font-size:.9rem; } code { font-family:ui-monospac
 </main>
 <script>
 const RUN = __RUN__;
-const PALETTE = ["#1f6feb","#d1242f","#1a7f37","#bf8700","#8250df","#0e8a9b","#c9418f","#6e7781"];
+const PALETTE = ["#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd","#17becf","#e377c2","#7f7f7f"];
 const t0 = Date.parse(RUN.started);
 const secs = iso => (Date.parse(iso) - t0) / 1000;
 const fmt = (v, d = 1) => v == null ? "-" : Number(v).toFixed(d);
@@ -97,31 +83,31 @@ document.getElementById("meta").innerHTML = [
   ["duration", Math.round((Date.parse(RUN.ended) - t0) / 1000) + " s"],
   ["host", h.cpus + " cpus, " + h.mem_mb + " MB, " + h.kernel + " " + h.arch],
   h.liquidsoap ? ["liquidsoap", h.liquidsoap] : null,
-  c.remote ? ["remote server", c.remote] : null,
+  c.remote ? ["remote server", c.remote + (RUN.server_host ? ", " + RUN.server_host.cpus + " cpus, " + RUN.server_host.mem_mb + " MB, " + RUN.server_host.kernel + " " + RUN.server_host.arch + (RUN.server_host.liquidsoap ? ", " + RUN.server_host.liquidsoap : "") : ", not sampled")] : null,
   ["ramp", c.start + " +" + c.step + " up to " + c.max + ", hold " + dur(c.hold)],
   ["listeners", "churn " + (c.Listener.Churn ? dur(c.Listener.Churn) : "off") + ", icy " + Math.round(c.Listener.ICY * 100) + "%, stall " + dur(c.Listener.Stall) + ", fail threshold " + (c.fail_threshold * 100).toFixed(1) + "%"],
-].filter(Boolean).map(([k, v]) => "<li>" + esc(k) + " <span>" + esc(v) + "</span></li>").join("");
+].filter(Boolean).map(([k, v]) => "<li><b>" + esc(k) + "</b>" + esc(v) + "</li>").join("");
 
 const v = document.getElementById("verdict");
-const last = steps[steps.length - 1];
-if (!steps.length || RUN.ceiling === 0) { v.className = "verdict fail"; v.innerHTML = "<b>No step passed.</b>"; }
+const last = steps[steps.length - 1], firstFail = steps.find(s => !s.passed);
+if (!steps.length || RUN.ceiling === 0) v.innerHTML = "<b>No step passed.</b>";
 else if (RUN.max_reached) v.innerHTML = "<b>Every step passed up to the configured maximum of " + RUN.ceiling + " listeners.</b> Raise --max to find the ceiling.";
 else v.innerHTML = "<b>Ceiling: " + RUN.ceiling + " listeners.</b> The next step failed.";
-if (last && !last.passed) v.innerHTML += "<ul>" + last.reasons.map(r => "<li>" + esc(r) + "</li>").join("") + "</ul>";
+if (firstFail) v.innerHTML += "<p>First failing step, " + firstFail.target + " listeners:</p><ul>" + firstFail.reasons.map(r => "<li>" + esc(r) + "</li>").join("") + "</ul>";
 
 const procs = [...new Set(samples.map(s => s.process))].sort();
-const best = steps.filter(s => s.passed).pop() || last;
+const best = steps.filter(s => s.passed).pop() || firstFail || last;
 const server = procs.find(p => p !== "icetest") || procs[0];
 if (best) {
   const sp = (best.processes || {})[server] || {};
-  const tiles = [
-    ["listeners", best.peak_live, best.passed ? "best passing step" : "failing step"],
-    ["throughput", fmt(best.avg_mbps) + " Mbit/s", "peak " + fmt(best.peak_mbps)],
-    server ? [server + " cpu", fmt(sp.cores_avg, 2) + " cores", "peak " + fmt(sp.cores_peak, 2)] : null,
-    server ? [server + " memory", fmt(sp.rss_peak_mb, 0) + " MB", "peak RSS"] : null,
-    ["time to first byte", fmt(best.ttfb_p50_ms, 0) + " ms", "p99 " + fmt(best.ttfb_p99_ms, 0) + " ms"],
+  const rows = [
+    ["step", best.passed ? "best passing step, " + best.peak_live + " listeners" : "failing step, " + best.peak_live + " listeners"],
+    ["throughput", fmt(best.avg_mbps) + " Mbit/s average, " + fmt(best.peak_mbps) + " peak"],
+    server ? [server + " CPU", fmt(sp.cores_avg, 2) + " cores average, " + fmt(sp.cores_peak, 2) + " peak"] : null,
+    server ? [server + " memory", fmt(sp.rss_peak_mb, 0) + " MB peak RSS"] : null,
+    ["time to first byte", fmt(best.ttfb_p50_ms, 0) + " ms median, " + fmt(best.ttfb_p99_ms, 0) + " ms p99"],
   ].filter(Boolean);
-  document.getElementById("tiles").innerHTML = tiles.map(([k, val, sub]) => "<div class='tile'><small>" + esc(k) + "</small><b>" + esc(val) + "</b><i>" + esc(sub) + "</i></div>").join("");
+  document.getElementById("summary").innerHTML = rows.map(([k, val]) => "<tr><td>" + esc(k) + "</td><td style='text-align:left'>" + esc(val) + "</td></tr>").join("");
 }
 
 const sumFails = s => Object.values(s.failures || {}).reduce((a, b) => a + b, 0);
@@ -158,7 +144,7 @@ const byMount = (key, scale = 1) => [...new Set(ticks.map(t => t.mount))].sort()
 const byProc = key => procs.map(p => ({ name: p, points: samples.filter(s => s.process === p).map(s => [secs(s.t), s[key]]) }));
 const markers = steps.map(s => ({ x: secs(s.start), label: String(s.target), fail: !s.passed }));
 
-function lineChart(title, series, unit, opts = {}) {
+function lineChart(title, series, unit) {
   const W = 600, H = 250, L = 54, R = 14, T = 16, B = 30;
   const xs = series.flatMap(s => s.points.map(p => p[0])), ys = series.flatMap(s => s.points.map(p => p[1]));
   if (!xs.length) return;
@@ -173,13 +159,10 @@ function lineChart(title, series, unit, opts = {}) {
     if (!s.points.length) return;
     const color = PALETTE[i % PALETTE.length];
     const d = s.points.map((p, j) => (j ? "L" : "M") + sx(p[0]).toFixed(1) + " " + sy(p[1]).toFixed(1)).join("");
-    if (opts.area && series.length === 1) g += "<path fill='" + color + "' fill-opacity='0.12' stroke='none' d='" + d + "L" + sx(s.points[s.points.length - 1][0]).toFixed(1) + " " + sy(0) + "L" + sx(s.points[0][0]).toFixed(1) + " " + sy(0) + "Z'/>";
     g += "<path fill='none' stroke='" + color + "' stroke-width='1.6' stroke-linejoin='round' d='" + d + "'/>";
-    const e = s.points[s.points.length - 1];
-    g += "<circle cx='" + sx(e[0]).toFixed(1) + "' cy='" + sy(e[1]).toFixed(1) + "' r='2.5' fill='" + color + "'/>";
   });
   if (unit) g += "<text class='axis' x='" + (W - R) + "' y='" + (H - 8) + "' text-anchor='end'>" + esc(unit) + "</text>";
-  const div = document.createElement("div"); div.className = "chart";
+  const div = document.createElement("div");
   div.innerHTML = "<h3>" + esc(title) + "</h3><svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='" + esc(title) + "'>" + g + "</svg><div class='legend'>" +
     series.map((s, i) => "<span><i style='background:" + PALETTE[i % PALETTE.length] + "'></i>" + esc(s.name) + "</span>").join("") + "</div>";
   document.getElementById("charts").appendChild(div);
@@ -187,8 +170,8 @@ function lineChart(title, series, unit, opts = {}) {
 function niceTicks(max, n) { const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map(m => m * p).find(s => s >= raw); const out = []; for (let v = 0; v <= max; v += step) out.push(+v.toFixed(6)); return out; }
 function fmtTick(v) { return v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : String(+v.toFixed(2)); }
 
-lineChart("Listeners", [{ name: "live", points: bySecond(ticks, "live", sum) }], "", { area: true });
-lineChart("Throughput", [{ name: "Mbit/s", points: bySecond(ticks, "bps", sum).map(([x, y]) => [x, y * 8 / 1e6]) }], "Mbit/s", { area: true });
+lineChart("Listeners", [{ name: "live", points: bySecond(ticks, "live", sum) }], "");
+lineChart("Throughput", [{ name: "Mbit/s", points: bySecond(ticks, "bps", sum).map(([x, y]) => [x, y * 8 / 1e6]) }], "Mbit/s");
 lineChart("CPU", byProc("cores"), "cores");
 lineChart("Memory", byProc("rss_mb"), "MB");
 lineChart("File descriptors", byProc("fds"), "fds");

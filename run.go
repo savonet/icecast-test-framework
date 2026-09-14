@@ -85,6 +85,7 @@ type StepResult struct {
 	CanaryOK   int                  `json:"canary_ok"`
 	CanaryFail int                  `json:"canary_fail"`
 	Alerts     int                  `json:"alerts"`
+	Server     *BoxStep             `json:"server,omitempty"` // the server machine, from icetest serve
 }
 
 type Run struct {
@@ -99,6 +100,7 @@ type Run struct {
 	MaxReached  bool         `json:"max_reached"`
 	Samples     []Sample     `json:"samples"`
 	SysCPU      []timedFloat `json:"system_cpu"`
+	Box         []BoxSample  `json:"box,omitempty"` // the server machine, merged from icetest serve
 	Ticks       []TickStat   `json:"ticks"`
 	Alerts      []Alert      `json:"alerts"`
 	Canaries    []Canary     `json:"canaries"`
@@ -567,6 +569,7 @@ func fillSampleStats(s *StepResult, r *Run, start, end time.Time) {
 	if cpuN > 0 {
 		s.SystemCPU = cpuSum / float64(cpuN)
 	}
+	s.Server = boxStep(r.Box, start, end)
 	s.Alerts = 0
 	for _, a := range r.Alerts {
 		if !a.T.Before(start) && !a.T.After(end) {

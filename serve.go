@@ -24,6 +24,7 @@ type Serve struct {
 	Ended    time.Time    `json:"ended"`
 	Samples  []Sample     `json:"samples"`
 	SysCPU   []timedFloat `json:"system_cpu"`
+	Box      []BoxSample  `json:"box"`
 	Alerts   []Alert      `json:"alerts"`
 	Env      []string     `json:"env,omitempty"`
 }
@@ -97,9 +98,11 @@ func serve(c *Config) error {
 	}
 	fmt.Println("all mounts up, recording until SIGINT or SIGTERM")
 
-	s := &Serve{Scenario: sc.Name, Host: hostInfo(c), Started: time.Now(), Samples: []Sample{}, SysCPU: []timedFloat{}, Alerts: []Alert{}, Env: c.Env}
+	s := &Serve{Scenario: sc.Name, Host: hostInfo(c), Started: time.Now(), Samples: []Sample{}, SysCPU: []timedFloat{}, Box: []BoxSample{}, Alerts: []Alert{}, Env: c.Env}
 	var sys systemCPU
 	sys.sample()
+	var box boxSampler
+	box.sample(time.Now())
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
 	for ctx.Err() == nil {
@@ -111,6 +114,7 @@ func serve(c *Config) error {
 				s.Alerts = append(s.Alerts, scanner.scan(now)...)
 			}
 			s.SysCPU = append(s.SysCPU, timedFloat{now, sys.sample()})
+			s.Box = append(s.Box, box.sample(now))
 			for _, p := range procs {
 				if err, gone := p.exited(); gone {
 					return fmt.Errorf("process %s exited: %v (see %s)", p.name, err, p.logPath)
@@ -141,6 +145,7 @@ func mergeServe(r *Run, path string) error {
 	}
 	r.Samples = append(r.Samples, s.Samples...)
 	r.SysCPU = s.SysCPU
+	r.Box = s.Box
 	r.Alerts = append(r.Alerts, s.Alerts...)
 	r.ServerHost = &s.Host
 	r.ServerEnv = s.Env

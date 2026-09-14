@@ -103,10 +103,10 @@ run() {
       ssh_box "$role" "rm -rf results/$scenario; ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD $RUN_FLAGS $WITH_FLAG scenarios/$scenario" > "$out/$role.log" 2>&1 &
     done
     # Step lines of every box, as they land; the full output stays in the logs.
-    tail -q -n +1 -F $(for role in $boxes; do echo "$out/$role.log"; done) 2>/dev/null | grep --line-buffered -E "^step|^  (pass|FAIL)|^icetest:" &
+    ( tail -q -n +1 -F $(for role in $boxes; do echo "$out/$role.log"; done) 2>/dev/null | grep --line-buffered -E "^step|^  (pass|FAIL)|^icetest:" ) &
     tail_pid=$!
     wait $(jobs -p | grep -v "^$tail_pid$")
-    kill $tail_pid 2>/dev/null
+    pkill -P $tail_pid 2>/dev/null; kill $tail_pid 2>/dev/null
     ssh_box server "pkill -INT -x icetest; while pgrep -x icetest >/dev/null; do sleep 1; done"
     for role in server $boxes; do
       gcloud compute scp --recurse "icetest-$role:results/$scenario" "$out/$role" --project "$GCP_PROJECT" --zone "$ZONE" --quiet

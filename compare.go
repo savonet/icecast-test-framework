@@ -329,21 +329,13 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
   const H = Math.max(serverH + 20, boxes * (loadH + gap) + 20);
   let g = "<defs><marker id='head' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'><path d='M0 0L8 4L0 8Z' fill='#666'/></marker></defs>";
   const cpuLoad = lh.cpus ? lh.cpus + " vCPU" : "", cpuServer = sh ? sh.cpus + " vCPU, " + Math.round(sh.mem_mb / 1024) + " GB" : "";
-  for (let i = 0; i < boxes; i++) {
-    const y = 10 + i * (loadH + gap);
-    g += "<rect class='box' x='10' y='" + y + "' width='190' height='" + loadH + "' rx='3'/>";
-    g += "<text class='lbl' x='20' y='" + (y + 16) + "'>load box " + (i + 1) + (cpuLoad ? " (" + cpuLoad + ")" : "") + "</text>";
-    g += "<text class='lbl muted' x='20' y='" + (y + 30) + "'>icetest run: listeners, ffmpeg canary</text>";
-    g += "<path class='arrow' d='M200 " + (y + loadH / 2) + " C260 " + (y + loadH / 2) + " 260 " + (10 + serverH / 2) + " 318 " + (10 + serverH / 2) + "'/>";
-  }
-  g += "<text class='lbl muted' x='230' y='" + (10 + serverH / 2 - 8) + "'>HTTP, internal network</text>";
-  g += "<rect class='box server' x='320' y='10' width='430' height='" + serverH + "' rx='3'/>";
-  g += "<text class='lbl' x='332' y='28'>server" + (cpuServer ? " (" + cpuServer + ")" : "") + "</text>";
+  g += "<rect class='box server' x='10' y='10' width='430' height='" + serverH + "' rx='3'/>";
+  g += "<text class='lbl' x='22' y='28'>server" + (cpuServer ? " (" + cpuServer + ")" : "") + "</text>";
   let y = 44;
   RUNS.forEach((r, i) => {
     const parts = lanes[i];
-    g += "<text class='lbl' x='332' y='" + (y + 16) + "'>" + esc(r.server === "icecast" ? "icecast-reference" : r.label.replace(/ \(.*$/, "")) + "</text>";
-    let x = 460;
+    g += "<text class='lbl' x='22' y='" + (y + 16) + "'>" + esc(r.server === "icecast" ? "icecast-reference" : r.label.replace(/ \(.*$/, "")) + "</text>";
+    let x = 150;
     parts.forEach((p, j) => {
       const w = 8 + p.length * 5.6;
       g += "<rect class='box' x='" + x + "' y='" + (y + 2) + "' width='" + w + "' height='" + (laneH - 6) + "' rx='2'/><text class='lbl' x='" + (x + 4) + "' y='" + (y + 15) + "'>" + esc(p) + "</text>";
@@ -352,7 +344,15 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
     });
     y += laneH;
   });
-  g += "<text class='lbl muted' x='332' y='" + (y + 18) + "'>icetest serve: starts the processes, records CPU, memory, fds and log alerts once a second</text>";
+  g += "<text class='lbl muted' x='22' y='" + (y + 18) + "'>icetest serve: starts the processes, records CPU, memory, fds and log alerts once a second</text>";
+  for (let i = 0; i < boxes; i++) {
+    const by = 10 + i * (loadH + gap);
+    g += "<path class='arrow' d='M440 " + (10 + serverH / 2) + " C500 " + (10 + serverH / 2) + " 500 " + (by + loadH / 2) + " 558 " + (by + loadH / 2) + "'/>";
+    g += "<rect class='box' x='560' y='" + by + "' width='190' height='" + loadH + "' rx='3'/>";
+    g += "<text class='lbl' x='570' y='" + (by + 16) + "'>load box " + (i + 1) + (cpuLoad ? " (" + cpuLoad + ")" : "") + "</text>";
+    g += "<text class='lbl muted' x='570' y='" + (by + 30) + "'>icetest run: listeners, ffmpeg canary</text>";
+  }
+  g += "<text class='lbl muted' x='448' y='" + (10 + serverH / 2 - 8) + "'>stream, internal network</text>";
   document.getElementById("diagram").innerHTML = "<svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='test architecture'>" + g + "</svg>";
 })();
 document.getElementById("setup").innerHTML = RUNS.map(r => "<li><b>" + esc(r.label) + "</b>: " + esc(r.description) + " Admitted at up to " + r.config.Listener.ConnectRate + " connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.</li>").join("") +

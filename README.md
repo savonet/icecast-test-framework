@@ -182,7 +182,10 @@ and the listeners elsewhere:
 `serve` writes a `ready` marker once every mount is up and `serve.json` when
 it receives SIGINT or SIGTERM. The merge recomputes every process figure of
 each step from the server's samples, so the report reads as if both had run
-on one machine.
+on one machine. `serve` also records the machine once a second: busy time per
+core, the user, system and interrupt split, memory and socket buffers, NIC
+bytes, packets and TCP retransmits. `compare` shows them at each ceiling, as
+a bar per core, when the runs carry such a recording.
 
 ## Several load boxes
 
@@ -196,6 +199,18 @@ each driving an equal share of every step.
 ```sh
 ./icetest combine -o results/combined results/load-1/<run> results/load-2/<run>
 ./icetest report --merge results/server/serve-<time>/serve.json results/combined
+```
+
+`icetest compare` puts several combined runs on one page over the listener
+count. Runs of the same scenario and server settings fold into one series,
+in the order given: a later ramp replaces the points of earlier ones inside
+the range it passed, levels within 0.1% are one point, and the series keeps
+the listener settings of the ramp that set its ceiling. Descriptions come
+from the current `scenarios/<name>/scenario.json`. `--notes file.md` appends
+the author's reading of the results after the summary.
+
+```sh
+./icetest compare -o results/compare --notes notes.md results/harbor-audio/*/combined results/icecast-reference/*/combined
 ```
 
 ## Google Cloud

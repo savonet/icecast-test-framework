@@ -688,6 +688,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 .cores { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:1rem 2rem; max-width:1100px; } .cores h3 { font-size:.95rem; margin:.5rem 0 .25rem; }
 .cores svg { max-width:340px; } .mem.free { fill:var(--head); stroke:var(--line); } .mem.rss { fill:var(--ink); } .mem.sock { fill:var(--ink); opacity:.55; } .mem.other { fill:var(--ink); opacity:.25; } .cores .bar { fill:var(--ink); opacity:.75; } .cores .bar.hot { opacity:1; } .cores p { margin:.25rem 0 0; font-size:.85rem; color:var(--muted); max-width:40ch; }
 .setup { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:.5rem 2.5rem; max-width:1000px; }
+.toc { font-size:.9rem; margin:0 0 1.5rem; } .toc a { margin-right:1.2rem; white-space:nowrap; color:var(--ink); } h2 { scroll-margin-top:1rem; }
 .headline { margin:0 0 .5rem; } .footnote { font-size:.85rem; max-width:70ch; margin:0 0 1.25rem; } .headline td:first-child, .headline td:nth-child(2) { font-weight:bold; } .headline td:nth-child(2) { font-size:1.2rem; }
 .notes { max-width:70ch; } .notes h3 { font-size:1rem; margin:1rem 0 .3rem; } .notes p, .notes li { line-height:1.45; }
 .setup h3 { font-size:.95rem; margin:.75rem 0 .35rem; } .setup ul { margin:0; padding-left:1.2rem; } .setup li { margin:.25rem 0; max-width:60ch; }
@@ -699,6 +700,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <main>
 <h1 id="title"></h1>
 <p class="muted">Same listeners, same pass rules, same server box. A cross marks a step that failed.</p>
+<nav class="toc" id="toc"></nav>
 <div id="diagram"></div>
 <h2>Results</h2>
 <div class="wrap"><table class="headline">__HEADLINE__</table></div>
@@ -901,6 +903,13 @@ function tick(v) { return v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k"
 
 chart("Server CPU", "cores", (r, s) => server(r, s).cores_avg, sh ? { value: sh.cpus, label: sh.cpus + " cores on the server" } : null);
 chart("Server memory", "MB", (r, s) => server(r, s).rss_peak_mb, sh ? { value: sh.mem_mb, label: Math.round(sh.mem_mb / 1000) + " GB on the server" } : null);
+
+// Section links, built last so the sections the notes and the machine
+// recording add are in it too.
+document.getElementById("toc").innerHTML = [...document.querySelectorAll("h2")].map(h => {
+  h.id = h.id || h.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return "<a href='#" + h.id + "'>" + esc(h.textContent) + "</a>";
+}).join("");
 </script>
 </body>
 </html>

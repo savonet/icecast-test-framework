@@ -298,7 +298,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <body>
 <main>
 <h1 id="title"></h1>
-<p class="muted">Same pass rules for every run, every ramp of a scenario folded into one series over the listener count so the servers line up. A cross marks a step that failed.</p>
+<p class="muted">Same listeners, same pass rules, same server box. A cross marks a step that failed.</p>
 <h2>Setup</h2>
 <div id="diagram"></div>
 <ul id="setup"></ul>

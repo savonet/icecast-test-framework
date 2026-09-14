@@ -156,9 +156,10 @@ func renderCompare(runs []*Run) string {
 		w("- %s; each load box: %d cpus, %d MB\n", l, runs[0].Host.CPUs, runs[0].Host.MemMB)
 	}
 	c := runs[0].Config
-	w("- listeners: raw HTTP clients, %.0f%% of them requesting ICY metadata, failed after %s without a byte or when lagging the mount median by %.0f%% for %d s\n",
-		c.Listener.ICY*100, c.Listener.Stall, c.Listener.LagTolerance*100, c.Listener.LagTicks)
-	w("- steps: each level held for %s once reached; a step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on an ffmpeg canary that cannot decode the stream, or on a server log alert\n\n", c.Hold, c.FailThreshold*100)
+	w("- listeners: each one is a TCP connection sending the HTTP GET a player sends, then reading the stream for as long as the step lasts. It counts the bytes it receives, which is where the throughput figures come from, and does not decode the audio. %.0f%% of them request ICY metadata and parse every interleaved block, so the metadata framing is checked on every one of those connections. Once a second every listener's rate over the last %d s is compared with the median of its mount; a listener lagging by more than %.0f%% for %d s in a row is failed, as is one that receives nothing for %s, or that the server disconnects.\n",
+		c.Listener.ICY*100, c.Listener.Window, c.Listener.LagTolerance*100, c.Listener.LagTicks, c.Listener.Stall)
+	w("- canaries: decoding is checked separately, by one ffmpeg process per mount and step that joins the stream mid-way and must decode %s of it without error, which is what a player joining a running stream does.\n", c.CanaryDuration)
+	w("- steps: each level held for %s once reached; a step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert\n\n", c.Hold, c.FailThreshold*100)
 	w("## Summary\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
@@ -363,8 +364,9 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
 document.getElementById("setup").innerHTML = RUNS.map(r => "<li><b>" + esc(r.label) + "</b>: " + esc(r.description) + " Admitted at up to " + r.config.Listener.ConnectRate + " connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.</li>").join("") +
   (sh ? "<li>server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") + "</li>" : "") +
   (RUNS[0].load_boxes ? "<li>" + esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB</li>" : "") +
-  "<li>listeners: raw HTTP clients, " + Math.round(c0.Listener.ICY * 100) + "% of them requesting ICY metadata, failed after " + dur(c0.Listener.Stall) + " without a byte or when lagging the mount median by " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s</li>" +
-  "<li>steps: each level held for " + dur(c0.hold) + " once reached; a step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on an ffmpeg canary that cannot decode the stream, or on a server log alert</li>";
+  "<li>listeners: each one is a TCP connection sending the HTTP GET a player sends, then reading the stream for as long as the step lasts. It counts the bytes it receives, which is where the throughput figures come from, and does not decode the audio. " + Math.round(c0.Listener.ICY * 100) + "% of them request ICY metadata and parse every interleaved block, so the metadata framing is checked on every one of those connections. Once a second every listener's rate over the last " + c0.Listener.Window + " s is compared with the median of its mount; a listener lagging by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row is failed, as is one that receives nothing for " + dur(c0.Listener.Stall) + ", or that the server disconnects.</li>" +
+  "<li>canaries: decoding is checked separately, by one ffmpeg process per mount and step that joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, which is what a player joining a running stream does.</li>" +
+  "<li>steps: each level held for " + dur(c0.hold) + " once reached; a step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert</li>";
 let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>range</th></tr>";
 for (const r of RUNS) {
   const b = best(r), c = r.config;

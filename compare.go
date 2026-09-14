@@ -512,7 +512,6 @@ function chart(title, unit, value) {
 function ticks(max, n) { const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map(m => m * p).find(s => s >= raw); const out = []; for (let v = 0; v <= max; v += step) out.push(+v.toFixed(6)); return out; }
 function tick(v) { return v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : String(+v.toFixed(2)); }
 
-chart("Throughput", "Mbit/s", (r, s) => s.avg_mbps);
 chart("Server CPU", "cores", (r, s) => server(r, s).cores_avg);
 chart("Server memory", "MB", (r, s) => server(r, s).rss_peak_mb);
 chart("Time to first byte, p99", "ms", (r, s) => s.ttfb_p99_ms);

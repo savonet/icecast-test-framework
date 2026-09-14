@@ -643,7 +643,9 @@ func renderCompareHTML(runs []*Run, docs map[string]map[string]string, notes str
 	safe := strings.ReplaceAll(string(data), "</", "<\\/")
 	var labels []string
 	for _, r := range runs {
-		labels = append(labels, r.Scenario)
+		if !slices.Contains(labels, r.Scenario) {
+			labels = append(labels, r.Scenario)
+		}
 	}
 	page := strings.Replace(comparePage, "__TITLE__", strings.Join(labels, " vs "), 1)
 	page = strings.Replace(page, "__RUNS__", safe, 1)

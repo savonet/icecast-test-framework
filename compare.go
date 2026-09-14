@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // compareCmd puts several runs side by side, over the listener count rather
@@ -115,6 +116,24 @@ func serverProcess(r *Run) string {
 	return best
 }
 
+func rateOf(runs []*Run, server string) int {
+	for _, r := range runs {
+		if serverProcess(r) == server {
+			return r.Config.Listener.ConnectRate
+		}
+	}
+	return 0
+}
+
+func timeoutOf(runs []*Run, server string) time.Duration {
+	for _, r := range runs {
+		if serverProcess(r) == server {
+			return r.Config.Listener.ConnectTimeout
+		}
+	}
+	return 0
+}
+
 func minStart(runs []*Run) int {
 	m := runs[0].Config.Start
 	for _, r := range runs {
@@ -182,17 +201,19 @@ func renderCompare(runs []*Run) string {
 		w("- %s; each load box: %d cpus, %d MB\n", l, runs[0].Host.CPUs, runs[0].Host.MemMB)
 	}
 	c := runs[0].Config
+	w("\n### Scale\n\n")
+	w("- Listeners per step: from %d to %d, the level on the charts, spread evenly over the load boxes.\n", minStart(runs), maxTarget(runs))
+	w("- Canaries per step: %d, one per load box.\n", canariesPerStep(runs[0]))
+	w("\n### Admission\n\n")
+	w("- How fast new listeners arrive is part of the test and differs by server. **liquidsoap was measured under a surge of %d new connections per second with %s of patience; Icecast needed the rate cut to %d per second and %s of patience to admit listeners at all.**\n",
+		rateOf(runs, "liquidsoap"), timeoutOf(runs, "liquidsoap"), rateOf(runs, "icecast"), timeoutOf(runs, "icecast"))
 	w("\n### Listeners\n\n")
-	w("- The listener count of a step is its level on the charts, from %d to %d here, spread evenly over the load boxes.\n", minStart(runs), maxTarget(runs))
 	w("- A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.\n")
 	w("- It counts the bytes it receives. That is the throughput figure. It does not decode audio.\n")
 	w("- %.0f%% of listeners request ICY metadata and parse every interleaved block.\n", c.Listener.ICY*100)
 	w("- A listener fails when it receives nothing for %s, when the server disconnects it, or when its rate over the last %d s lags the median of its mount by more than %.0f%% for %d s in a row.\n", c.Listener.Stall, c.Listener.Window, c.Listener.LagTolerance*100, c.Listener.LagTicks)
-	for _, r := range runs {
-		w("- Admission against %s: up to %d new connections per second over the fleet, %s to connect and read the headers.\n", serverProcess(r), r.Config.Listener.ConnectRate, r.Config.Listener.ConnectTimeout)
-	}
 	w("\n### Canaries\n\n")
-	w("- Decoding is checked by one ffmpeg process per load box, mount and step, %d per step here. Each joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", canariesPerStep(runs[0]), c.CanaryDuration)
+	w("- Decoding is checked by an ffmpeg process per load box, mount and step. Each joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", c.CanaryDuration)
 	w("\n### Pass rules\n\n")
 	w("- Each level is held for %s once reached.\n", c.Hold)
 	w("- A step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert.\n\n", c.FailThreshold*100)
@@ -405,14 +426,21 @@ document.getElementById("setup").innerHTML =
   section("Machines", [
     sh ? "server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") : null,
     RUNS[0].load_boxes ? esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB" : null].filter(Boolean)) +
+  section("Scale", [
+    "Listeners per step: from " + Math.min(...RUNS.map(r => r.config.start)) + " to " + Math.max(...RUNS.flatMap(r => r.steps.map(s => s.target))) + ", the level on the charts, spread evenly over the load boxes.",
+    "Canaries per step: " + (RUNS[0].steps.length ? RUNS[0].steps[0].canary_ok + RUNS[0].steps[0].canary_fail : 0) + ", one per load box."]) +
+  section("Admission", [(function () {
+    const by = name => RUNS.find(r => r.server === name);
+    const l = by("liquidsoap"), i = by("icecast");
+    if (!l || !i) return "How fast new listeners arrive is part of the test: " + RUNS.map(r => esc(r.server) + " at up to " + r.config.Listener.ConnectRate + " new connections per second, " + dur(r.config.Listener.ConnectTimeout) + " of patience").join("; ") + ".";
+    return "How fast new listeners arrive is part of the test and differs by server. <b>liquidsoap was measured under a surge of " + l.config.Listener.ConnectRate + " new connections per second with " + dur(l.config.Listener.ConnectTimeout) + " of patience; Icecast needed the rate cut to " + i.config.Listener.ConnectRate + " per second and " + dur(i.config.Listener.ConnectTimeout) + " of patience to admit listeners at all.</b>";
+  })()]) +
   section("Listeners", [
-    "The listener count of a step is its level on the charts, from " + Math.min(...RUNS.map(r => r.config.start)) + " to " + Math.max(...RUNS.flatMap(r => r.steps.map(s => s.target))) + " here, spread evenly over the load boxes.",
     "A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.",
     "It counts the bytes it receives. That is the throughput figure. It does not decode audio.",
     Math.round(c0.Listener.ICY * 100) + "% of listeners request ICY metadata and parse every interleaved block.",
-    "A listener fails when it receives nothing for " + dur(c0.Listener.Stall) + ", when the server disconnects it, or when its rate over the last " + c0.Listener.Window + " s lags the median of its mount by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row.",
-    ...RUNS.map(r => "Admission against " + esc(r.server) + ": up to " + r.config.Listener.ConnectRate + " new connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.")]) +
-  section("Canaries", ["Decoding is checked by one ffmpeg process per load box, mount and step, " + (RUNS[0].steps.length ? RUNS[0].steps[0].canary_ok + RUNS[0].steps[0].canary_fail : 0) + " per step here. Each joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
+    "A listener fails when it receives nothing for " + dur(c0.Listener.Stall) + ", when the server disconnects it, or when its rate over the last " + c0.Listener.Window + " s lags the median of its mount by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row."]) +
+  section("Canaries", ["Decoding is checked by an ffmpeg process per load box, mount and step. Each joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
   section("Pass rules", [
     "Each level is held for " + dur(c0.hold) + " once reached.",
     "A step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert."]);

@@ -1,5 +1,5 @@
 {
-  "description": "Three ffmpeg source clients push mp3 and ogg/opus into icecast.server; every listener gets a live remux of the encoded stream (dedicated_encoder=true). Each format is enabled with --with (MP3, OPUS, FLAC).",
+  "description": "ffmpeg source clients push into icecast.server; every listener gets a live remux of the encoded stream (dedicated_encoder=true). Formats are chosen with --with: MP3, OPUS, FLAC.",
   "processes": [
     {
       "name": "liquidsoap",

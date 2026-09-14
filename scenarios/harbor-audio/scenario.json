@@ -1,5 +1,5 @@
 {
-  "description": "liquidsoap encodes one playlist to mp3 and opus and serves every listener itself through output.harbor. Each format is enabled with --with (MP3, OPUS, FLAC).",
+  "description": "liquidsoap encodes one playlist and serves every listener itself through output.harbor. Formats are chosen with --with: MP3, OPUS, FLAC.",
   "processes": [
     {
       "name": "liquidsoap",

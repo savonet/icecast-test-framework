@@ -1,5 +1,5 @@
 {
-  "description": "Reference point: liquidsoap encodes the same formats and pushes them with output.icecast into a real Icecast 2.4 serving the listeners. Each format is enabled with --with (MP3, OPUS, FLAC).",
+  "description": "Reference point: liquidsoap encodes one playlist and pushes it with output.icecast into a real Icecast 2.4 serving the listeners. Formats are chosen with --with: MP3, OPUS, FLAC.",
   "templates": [
     "icecast.xml.tmpl"
   ],

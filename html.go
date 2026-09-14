@@ -89,6 +89,7 @@ document.getElementById("meta").innerHTML = [
   loadBoxes.size ? ["load generators", loadBoxes.size + " box(es), peak " + fmt(loadPeak) + " cores on the busiest"] : null,
   c.remote ? ["remote server", c.remote + (RUN.server_host ? ", " + RUN.server_host.cpus + " cpus, " + RUN.server_host.mem_mb + " MB, " + RUN.server_host.kernel + " " + RUN.server_host.arch + (RUN.server_host.liquidsoap ? ", " + RUN.server_host.liquidsoap : "") : ", not sampled")] : null,
   ["ramp", c.start + " +" + c.step + " up to " + c.max + ", hold " + dur(c.hold)],
+  c.with && c.with.length ? ["enabled", c.with.join(", ")] : null,
   ["listeners", "churn " + (c.Listener.Churn ? dur(c.Listener.Churn) : "off") + ", icy " + Math.round(c.Listener.ICY * 100) + "%, stall " + dur(c.Listener.Stall) + ", fail threshold " + (c.fail_threshold * 100).toFixed(1) + "%"],
 ].filter(Boolean).map(([k, v]) => "<li><b>" + esc(k) + "</b>" + esc(v) + "</li>").join("");
 

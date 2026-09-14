@@ -64,6 +64,9 @@ func renderReport(r *Run) string {
 	c := r.Config
 	w("- ramp: %d +%d up to %d, hold %s, churn %s, icy %.0f%%, stall %s, fail threshold %.1f%%\n",
 		c.Start, c.Step, c.Max, c.Hold, c.Listener.Churn, c.Listener.ICY*100, c.Listener.Stall, c.FailThreshold*100)
+	if len(c.With) > 0 {
+		w("- enabled: %s\n", strings.Join(c.With, ", "))
+	}
 	if l := loadSummary(r); l != "" {
 		w("- %s\n", l)
 	}

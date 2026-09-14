@@ -15,6 +15,7 @@
 #   START 1000  STEP 1000  MAX 30000  HOLD 60s   the ramp, in listeners over all load boxes
 #   RUN_FLAGS     extra icetest run flags, e.g. --connect-rate 250 --churn 10m
 #   WITH          optional scenario parts for serve and run, e.g. MP3,OPUS
+#   SERVE_ENV     NAME=value settings for the server-side script, e.g. FRAME=0.2 (space-separated)
 set -eu
 cd "$(dirname "$0")/.."
 : "${GCP_PROJECT:?set GCP_PROJECT}"
@@ -23,6 +24,7 @@ LOAD_COUNT="${LOAD_COUNT:-1}"
 START="${START:-1000}"; STEP="${STEP:-1000}"; MAX="${MAX:-30000}"; HOLD="${HOLD:-60s}"
 RUN_FLAGS="${RUN_FLAGS:-}"
 WITH_FLAG=""; [ -z "${WITH:-}" ] || WITH_FLAG="--with $WITH"
+ENV_FLAGS=""; for kv in ${SERVE_ENV:-}; do ENV_FLAGS="$ENV_FLAGS --env $kv"; done
 TF="tofu -chdir=deploy/gcp"
 TFVARS="-var project=$GCP_PROJECT -var zone=$ZONE -var machine_type=${MACHINE_TYPE:-c3-standard-8} -var load_count=$LOAD_COUNT -var load_machine_type=${LOAD_MACHINE_TYPE:-c3-standard-8} -var spot=${SPOT:-true} -var liquidsoap_release=${LIQUIDSOAP_RELEASE:-rolling-release-v2.5.x}"
 
@@ -95,7 +97,7 @@ run() {
     mkdir -p "$out"
     echo "== $scenario: serving on icetest-server"
     video_flag=""; [ -z "${VIDEO:-}" ] || video_flag="--video video"
-    ssh_box server "rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG --port 8000 scenarios/$scenario > serve.log 2>&1 &"
+    ssh_box server "rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG $ENV_FLAGS --port 8000 scenarios/$scenario > serve.log 2>&1 &"
     until ssh_box server "ls results/$scenario/serve-*/ready" >/dev/null 2>&1; do sleep 5; done
     echo "== $scenario: ramping $START +$STEP up to $MAX over $LOAD_COUNT load box(es), hold $HOLD"
     for role in $boxes; do

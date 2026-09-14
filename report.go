@@ -67,6 +67,9 @@ func renderReport(r *Run) string {
 	if len(c.With) > 0 {
 		w("- enabled: %s\n", strings.Join(c.With, ", "))
 	}
+	if len(r.ServerEnv) > 0 {
+		w("- server settings: %s\n", strings.Join(r.ServerEnv, ", "))
+	}
 	if l := loadSummary(r); l != "" {
 		w("- %s\n", l)
 	}

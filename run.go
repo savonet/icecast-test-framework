@@ -38,6 +38,7 @@ type Config struct {
 	IgnoreAlerts   bool          `json:"ignore_alerts"`
 	CanaryRetries  int           `json:"canary_retries"`
 	With           []string      `json:"with,omitempty"` // enabled optional mounts and processes
+	Env            []string      `json:"env,omitempty"`  // NAME=value pairs exported to the scenario as ICETEST_NAME
 	Listener       ListenerOptions
 	Liquidsoap     string `json:"liquidsoap"`
 	AudioDir       string `json:"audio_dir"`
@@ -103,6 +104,7 @@ type Run struct {
 	Canaries    []Canary     `json:"canaries"`
 	Events      []string     `json:"events"`
 	ServerHost  *HostInfo    `json:"server_host,omitempty"` // merged from icetest serve
+	ServerEnv   []string     `json:"server_env,omitempty"`  // the serve's --env, merged with it
 }
 
 type timedFloat struct {
@@ -138,6 +140,8 @@ func runCmd(args []string) error {
 	fs.IntVar(&c.CanaryRetries, "canary-retries", 1, "extra attempts for a canary that fails to open the stream")
 	var with string
 	fs.StringVar(&with, "with", "", "comma-separated optional parts of the scenario to enable, e.g. FLAC; exported as ICETEST_<NAME>=1")
+	var env envFlag
+	fs.Var(&env, "env", "NAME=value exported to the scenario as ICETEST_NAME; repeatable")
 	fs.StringVar(&c.Liquidsoap, "liquidsoap", "liquidsoap", "liquidsoap binary, exported as ${LIQUIDSOAP}")
 	fs.StringVar(&c.AudioDir, "audio", "", "directory of audio files, exported as ${AUDIO_DIR}")
 	fs.StringVar(&c.Video, "video", "", "video file, exported as ${VIDEO}")
@@ -159,6 +163,7 @@ func runCmd(args []string) error {
 		return errors.New("usage: icetest run [flags] <scenario-dir>")
 	}
 	c.Scenario = fs.Arg(0)
+	c.Env = env
 	if with != "" {
 		c.With = strings.Split(with, ",")
 	}
@@ -339,6 +344,11 @@ func run(c *Config) error {
 	return nil
 }
 
+type envFlag []string
+
+func (e *envFlag) String() string     { return strings.Join(*e, ",") }
+func (e *envFlag) Set(v string) error { *e = append(*e, v); return nil }
+
 // prepareRunDir builds the scenario variables and the generated inputs
 // (concat playlist, rendered templates) inside runDir.
 func prepareRunDir(c *Config, sc *Scenario, runDir string) (Vars, error) {
@@ -364,6 +374,11 @@ func prepareRunDir(c *Config, sc *Scenario, runDir string) (Vars, error) {
 	}
 	for _, w := range c.With {
 		vars[w] = "1"
+	}
+	for _, kv := range c.Env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			vars[k] = v
+		}
 	}
 	if c.AudioDir != "" {
 		if err := writeConcatList(c.AudioDir, vars["AUDIO_CONCAT"]); err != nil {

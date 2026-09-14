@@ -24,6 +24,7 @@ type Serve struct {
 	Samples  []Sample     `json:"samples"`
 	SysCPU   []timedFloat `json:"system_cpu"`
 	Alerts   []Alert      `json:"alerts"`
+	Env      []string     `json:"env,omitempty"`
 }
 
 func serveCmd(args []string) error {
@@ -37,11 +38,14 @@ func serveCmd(args []string) error {
 	fs.StringVar(&c.ResultsDir, "results", "results", "where the serve directory is created")
 	var with string
 	fs.StringVar(&with, "with", "", "comma-separated optional parts of the scenario to enable, e.g. FLAC; exported as ICETEST_<NAME>=1")
+	var env envFlag
+	fs.Var(&env, "env", "NAME=value exported to the scenario as ICETEST_NAME; repeatable")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
 		return errors.New("usage: icetest serve [flags] <scenario-dir>")
 	}
 	c.Scenario = fs.Arg(0)
+	c.Env = env
 	if with != "" {
 		c.With = strings.Split(with, ",")
 	}
@@ -86,7 +90,7 @@ func serve(c *Config) error {
 	}
 	fmt.Println("all mounts up, recording until SIGINT or SIGTERM")
 
-	s := &Serve{Scenario: sc.Name, Host: hostInfo(c), Started: time.Now(), Samples: []Sample{}, SysCPU: []timedFloat{}, Alerts: []Alert{}}
+	s := &Serve{Scenario: sc.Name, Host: hostInfo(c), Started: time.Now(), Samples: []Sample{}, SysCPU: []timedFloat{}, Alerts: []Alert{}, Env: c.Env}
 	var sys systemCPU
 	sys.sample()
 	t := time.NewTicker(time.Second)
@@ -132,6 +136,7 @@ func mergeServe(r *Run, path string) error {
 	r.SysCPU = s.SysCPU
 	r.Alerts = append(r.Alerts, s.Alerts...)
 	r.ServerHost = &s.Host
+	r.ServerEnv = s.Env
 	// The run judged its steps without the server log; alerts can now fail a
 	// step and move the ceiling.
 	r.Ceiling = 0

@@ -1,4 +1,7 @@
 log.level := 3
+# Fewer, larger writes per listener: the writers wake once per frame.
+settings.frame.duration :=
+  float_of_string(environment.get(default="0.04", "ICETEST_FRAME"))
 port = int_of_string(environment.get(default="8000", "ICETEST_PORT"))
 s = mksafe(playlist(mode="randomize", environment.get("ICETEST_AUDIO_DIR")))
 enabled = fun (name) -> environment.get(default="", "ICETEST_#{name}") != ""

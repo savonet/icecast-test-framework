@@ -57,6 +57,7 @@ func combineRuns(runs []*Run) *Run {
 		Started:     first.Started,
 		Ended:       first.Ended,
 		ServerHost:  first.ServerHost,
+		ServerEnv:   first.ServerEnv,
 		Steps:       []StepResult{},
 		Samples:     []Sample{},
 		SysCPU:      []timedFloat{},

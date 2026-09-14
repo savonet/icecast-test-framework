@@ -55,13 +55,14 @@ func mergeScenarios(runs []*Run) []*Run {
 	var order []string
 	byScenario := map[string]*Run{}
 	for _, r := range runs {
-		m, seen := byScenario[r.Scenario]
+		key := r.Scenario + " " + strings.Join(r.ServerEnv, " ")
+		m, seen := byScenario[key]
 		if !seen {
 			copy := *r
 			copy.Steps = nil
 			m = &copy
-			byScenario[r.Scenario] = m
-			order = append(order, r.Scenario)
+			byScenario[key] = m
+			order = append(order, key)
 		}
 		for _, st := range r.Steps {
 			replaced := false
@@ -168,10 +169,14 @@ func canariesPerStep(r *Run) int {
 }
 
 func runLabel(r *Run) string {
+	label := r.Scenario
 	if p := serverProcess(r); p != "" {
-		return r.Scenario + " (" + p + ")"
+		label += " (" + p + ")"
 	}
-	return r.Scenario
+	if len(r.ServerEnv) > 0 {
+		label += " " + strings.Join(r.ServerEnv, " ")
+	}
+	return label
 }
 
 func bestStep(r *Run) *StepResult {

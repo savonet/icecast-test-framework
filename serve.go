@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -67,6 +68,12 @@ func serve(c *Config) error {
 		return err
 	}
 	raiseNofile()
+	// A leftover server from an earlier run would answer the probes in place
+	// of the one about to start.
+	if conn, err := net.DialTimeout("tcp", c.Listener.Host, time.Second); err == nil {
+		conn.Close()
+		return fmt.Errorf("%s is already accepting connections: stop whatever holds the port before serving", c.Listener.Host)
+	}
 	vars, err := prepareRunDir(c, sc, runDir)
 	if err != nil {
 		return err

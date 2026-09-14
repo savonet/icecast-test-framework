@@ -97,7 +97,8 @@ run() {
     mkdir -p "$out"
     echo "== $scenario: serving on icetest-server"
     video_flag=""; [ -z "${VIDEO:-}" ] || video_flag="--video video"
-    ssh_box server "rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG $ENV_FLAGS --port 8000 scenarios/$scenario > serve.log 2>&1 &"
+    # A server that hung on its way down would answer the probes in place of the new one.
+    ssh_box server "pkill -9 -x icetest; pkill -9 -x liquidsoap; pkill -9 -x icecast; pkill -9 -x ffmpeg; sleep 1; rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG $ENV_FLAGS --port 8000 scenarios/$scenario > serve.log 2>&1 &"
     until ssh_box server "ls results/$scenario/serve-*/ready" >/dev/null 2>&1; do sleep 5; done
     echo "== $scenario: ramping $START +$STEP up to $MAX over $LOAD_COUNT load box(es), hold $HOLD"
     for role in $boxes; do

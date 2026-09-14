@@ -12,7 +12,8 @@
 #   GCP_ZONE      us-central1-a       VIDEO      local video file, copied when set
 #   MACHINE_TYPE  c3-standard-8       LOAD_COUNT 1     LOAD_MACHINE_TYPE c3-standard-8
 #   SPOT          true                LIQUIDSOAP_RELEASE  rolling-release-v2.5.x
-#   START 1000  STEP 1000  MAX 30000  HOLD 60s   the ramp, in listeners over all load boxes
+#   START 1000  STEP 1000  HOLD 60s   the ramp, in listeners over all load boxes; it ends on the first failed step
+#   MAX           a stop below the ceiling, when one is wanted; by default the ramp runs until it fails
 #   CONNECT_RATE 300   new connections per second over all load boxes
 #   RUN_FLAGS     extra icetest run flags, per box, e.g. --churn 10m
 #   WITH          optional scenario parts for serve and run, e.g. MP3,OPUS
@@ -22,7 +23,7 @@ cd "$(dirname "$0")/.."
 : "${GCP_PROJECT:?set GCP_PROJECT}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 LOAD_COUNT="${LOAD_COUNT:-1}"
-START="${START:-1000}"; STEP="${STEP:-1000}"; MAX="${MAX:-30000}"; HOLD="${HOLD:-60s}"; CONNECT_RATE="${CONNECT_RATE:-300}"
+START="${START:-1000}"; STEP="${STEP:-1000}"; MAX="${MAX:-1000000}"; HOLD="${HOLD:-60s}"; CONNECT_RATE="${CONNECT_RATE:-300}"
 RUN_FLAGS="${RUN_FLAGS:-}"
 WITH_FLAG=""; [ -z "${WITH:-}" ] || WITH_FLAG="--with $WITH"
 ENV_FLAGS=""; for kv in ${SERVE_ENV:-}; do ENV_FLAGS="$ENV_FLAGS --env $kv"; done
@@ -107,7 +108,7 @@ run() {
     # connections.
     for role in $boxes; do
       bind="$(bind_addresses "$role")"
-      ssh_box "$role" "rm -rf results/$scenario; nohup ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD --connect-rate $(share "$CONNECT_RATE") $RUN_FLAGS $WITH_FLAG scenarios/$scenario > run.log 2>&1 &"
+      ssh_box "$role" "pkill -x icetest; sleep 1; rm -rf results/$scenario; nohup ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD --connect-rate $(share "$CONNECT_RATE") $RUN_FLAGS $WITH_FLAG scenarios/$scenario > run.log 2>&1 &"
     done
     for role in $boxes; do : > "$out/$role.log"; done
     while :; do

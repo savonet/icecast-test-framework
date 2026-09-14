@@ -16,11 +16,15 @@ variable "machine_type" {
   type    = string
   default = "c3-standard-8"
 }
-# The load box drives more listeners than the server serves, so it gets a
-# larger shape and a block of alias addresses to draw source ports from.
+# The load boxes drive more listeners than the server serves: several of
+# them, each with a block of alias addresses to draw source ports from.
+variable "load_count" {
+  type    = number
+  default = 1
+}
 variable "load_machine_type" {
   type    = string
-  default = "c3-standard-22"
+  default = "c3-standard-8"
 }
 variable "load_alias_range" {
   type    = string
@@ -45,14 +49,15 @@ provider "google" {
 }
 
 locals {
-  roles     = ["server", "load"]
-  provision = replace(file("${path.module}/../provision.sh"), "$${liquidsoap_release}", var.liquidsoap_release)
+  load_roles = [for i in range(var.load_count) : "load-${i + 1}"]
+  roles      = concat(["server"], local.load_roles)
+  provision  = replace(file("${path.module}/../provision.sh"), "$${liquidsoap_release}", var.liquidsoap_release)
 }
 
 resource "google_compute_instance" "box" {
   for_each     = toset(local.roles)
   name         = "icetest-${each.key}"
-  machine_type = each.key == "load" ? var.load_machine_type : var.machine_type
+  machine_type = each.key == "server" ? var.machine_type : var.load_machine_type
   zone         = var.zone
   tags         = ["icetest"]
 
@@ -74,7 +79,7 @@ resource "google_compute_instance" "box" {
     network = "default"
     access_config {}
     dynamic "alias_ip_range" {
-      for_each = each.key == "load" ? [var.load_alias_range] : []
+      for_each = each.key == "server" ? [] : [var.load_alias_range]
       content {
         ip_cidr_range = alias_ip_range.value
       }
@@ -97,8 +102,11 @@ resource "google_compute_instance" "box" {
 output "server_internal_ip" {
   value = google_compute_instance.box["server"].network_interface[0].network_ip
 }
-output "load_alias_range" {
-  value = google_compute_instance.box["load"].network_interface[0].alias_ip_range[0].ip_cidr_range
+output "load_boxes" {
+  value = local.load_roles
+}
+output "load_alias_ranges" {
+  value = { for r in local.load_roles : r => google_compute_instance.box[r].network_interface[0].alias_ip_range[0].ip_cidr_range }
 }
 output "zone" { value = var.zone }
 output "project" { value = var.project }

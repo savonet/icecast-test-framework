@@ -184,6 +184,20 @@ it receives SIGINT or SIGTERM. The merge recomputes every process figure of
 each step from the server's samples, so the report reads as if both had run
 on one machine.
 
+## Several load boxes
+
+One load box drives about 8000 listeners per core; past its CPU the server is
+not the thing being measured any more. `icetest combine` folds the runs of
+several load boxes driving the same server into one run: steps are summed by
+index, ticks by second, time to first byte is the slowest box, and each box
+keeps its own cost column. `deploy/bench.sh` does this for `LOAD_COUNT` boxes,
+each driving an equal share of every step.
+
+```sh
+./icetest combine -o results/combined results/load-1/<run> results/load-2/<run>
+./icetest report --merge results/server/serve-<time>/serve.json results/combined
+```
+
 ## Google Cloud
 
 `deploy/bench.sh` does the two-machine run on two Spot VMs in one zone,
@@ -192,18 +206,28 @@ scheduled; each verb is a command you type.
 
 ```sh
 export GCP_PROJECT=my-project
-AUDIO=/path/to/music deploy/bench.sh up   # two c3-standard-8 Debian 13 boxes, liquidsoap from the rolling release
-WITH=MP3 deploy/bench.sh run harbor-audio icecast-reference icecast-server-audio
-deploy/bench.sh down                       # tofu destroy
+AUDIO=/path/to/music LOAD_COUNT=3 deploy/bench.sh up   # one c3-standard-8 server, three load boxes, Debian 13, liquidsoap from the rolling release
+WITH=MP3 LOAD_COUNT=3 START=6000 STEP=6000 MAX=150000 deploy/bench.sh run harbor-audio
+LOAD_COUNT=3 deploy/bench.sh down                       # tofu destroy
 ```
+
+The ramp (`START`, `STEP`, `MAX`, `HOLD`) counts listeners over all load
+boxes; each box drives an equal share and connects from its own block of
+alias addresses, so ports are never the limit. Pass the same `LOAD_COUNT`
+and machine types to every call so the OpenTofu variables match what is
+deployed. Google caps a new project at 32 vCPUs across all regions
+(`CPUS_ALL_REGIONS`); several load boxes need that quota raised first.
 
 Needs `gcloud` logged in, `tofu`, and `go`. `up` provisions both boxes through
 `deploy/provision.sh` (the liquidsoap `.deb` of `LIQUIDSOAP_RELEASE`, ffmpeg,
 icecast2, socket limits), cross-builds `icetest`, and copies it with the
 scenarios to both boxes and the audio set to the server. `run` serves each scenario on the server box, ramps
-from the load box with `RUN_FLAGS`, fetches both result directories into
-`results/cloud/<scenario>/<time>/` and merges them. `MACHINE_TYPE`, `GCP_ZONE`,
-`SPOT` and `VIDEO` are the other knobs; see the header of the script.
+from every load box at once, fetches all result directories into
+`results/cloud/<scenario>/<time>/`, combines them and merges the server
+recording. `deploy/bench.sh liquidsoap <file.deb>` installs a package on the
+server box, for instance a CI artifact of a branch. `MACHINE_TYPE`,
+`LOAD_MACHINE_TYPE`, `GCP_ZONE`, `SPOT`, `RUN_FLAGS` and `VIDEO` are the other
+knobs; see the header of the script.
 
 The ceiling in the cloud is usually the NIC: egress is 2 Gbit/s per vCPU, so
 an 8 vCPU box tops out near 16 Gbit/s, about 45k listeners on the three audio

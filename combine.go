@@ -115,10 +115,12 @@ func combineStep(runs []*Run, i int) StepResult {
 	var sysCPU float64
 	for n, r := range runs {
 		st := r.Steps[i]
-		if n == 0 || st.Start.Before(s.Start) {
+		// The fleet is at the target from the last box reaching it to the
+		// first box leaving it; what a box does outside that is not the step.
+		if n == 0 || st.Start.After(s.Start) {
 			s.Start = st.Start
 		}
-		if st.End.After(s.End) {
+		if n == 0 || st.End.Before(s.End) {
 			s.End = st.End
 		}
 		s.Target += st.Target

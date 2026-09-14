@@ -51,7 +51,7 @@ func combineRuns(runs []*Run) *Run {
 	first := runs[0]
 	c := &Run{
 		Scenario:    first.Scenario,
-		Description: fmt.Sprintf("%s Combined from %d load boxes.", first.Description, len(runs)),
+		Description: first.Description,
 		Host:        first.Host,
 		Config:      first.Config,
 		Started:     first.Started,

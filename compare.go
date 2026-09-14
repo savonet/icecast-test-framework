@@ -1,0 +1,294 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// compareCmd puts several runs side by side, over the listener count rather
+// than time, so different servers under the same ramp can be read together.
+func compareCmd(args []string) error {
+	fs := flag.NewFlagSet("compare", flag.ExitOnError)
+	out := fs.String("o", "", "directory to write compare.md and compare.html into")
+	fs.Parse(args)
+	if *out == "" || fs.NArg() < 2 {
+		return fmt.Errorf("usage: icetest compare -o <out-dir> <run-dir> <run-dir>...")
+	}
+	var runs []*Run
+	for _, dir := range fs.Args() {
+		data, err := os.ReadFile(filepath.Join(dir, "run.json"))
+		if err != nil {
+			return err
+		}
+		var r Run
+		if err := json.Unmarshal(data, &r); err != nil {
+			return fmt.Errorf("%s: %w", dir, err)
+		}
+		runs = append(runs, &r)
+	}
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		return err
+	}
+	md := renderCompare(runs)
+	if err := os.WriteFile(filepath.Join(*out, "compare.md"), []byte(md), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(*out, "compare.html"), []byte(renderCompareHTML(runs)), 0o644); err != nil {
+		return err
+	}
+	fmt.Print(md)
+	return nil
+}
+
+// serverProcess is the process holding the listener sockets: the one with
+// the most file descriptors, load generators excluded.
+func serverProcess(r *Run) string {
+	best, fds := "", -1
+	for _, s := range r.Steps {
+		for name, p := range s.Processes {
+			if !isLoadGenerator(name) && p.FdsPeak > fds {
+				best, fds = name, p.FdsPeak
+			}
+		}
+	}
+	return best
+}
+
+func runLabel(r *Run) string {
+	if p := serverProcess(r); p != "" {
+		return r.Scenario + " (" + p + ")"
+	}
+	return r.Scenario
+}
+
+func bestStep(r *Run) *StepResult {
+	var best *StepResult
+	for i := range r.Steps {
+		if r.Steps[i].Passed {
+			best = &r.Steps[i]
+		}
+	}
+	return best
+}
+
+func renderCompare(runs []*Run) string {
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+	var labels []string
+	for _, r := range runs {
+		labels = append(labels, runLabel(r))
+	}
+	w("# %s\n\n", strings.Join(labels, " vs "))
+	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | ramp |\n|---|---|---|---|---|---|---|---|\n")
+	for _, r := range runs {
+		best := bestStep(r)
+		verdict := "no step passed"
+		cores, rss, ttfb := "-", "-", "-"
+		if best != nil {
+			verdict = fmt.Sprintf("%d", best.PeakLive)
+			if r.MaxReached {
+				verdict += " (maximum, not a ceiling)"
+			}
+			if p, ok := best.Processes[serverProcess(r)]; ok {
+				cores = fmt.Sprintf("%.2f", p.CoresAvg)
+				rss = fmt.Sprintf("%.0f MB", p.RSSPeakMB)
+			}
+			ttfb = fmt.Sprintf("%.0f / %.0f ms", best.TTFBp50ms, best.TTFBp99ms)
+		}
+		// The step average, not the instantaneous peak: peaks of several load
+		// boxes summed do not happen in the same second.
+		var peak float64
+		for _, s := range r.Steps {
+			if s.Passed {
+				peak = max(peak, s.AvgMbps)
+			}
+		}
+		w("| %s | %s | %s | %.0f | %s | %s | %s | %d +%d up to %d, hold %s |\n", runLabel(r), strings.Join(r.Config.With, ","), verdict, peak, cores, rss, ttfb, r.Config.Start, r.Config.Step, r.Config.Max, r.Config.Hold)
+	}
+	w("\n## Steps\n\n| listeners |")
+	for _, l := range labels {
+		w(" %s: ok | Mbit/s | ttfb p99 ms | server cores | server MB | failures |", l)
+	}
+	w("\n|---|")
+	for range labels {
+		w("---|---|---|---|---|---|")
+	}
+	w("\n")
+	targets := map[int]bool{}
+	for _, r := range runs {
+		for _, s := range r.Steps {
+			targets[s.Target] = true
+		}
+	}
+	var sorted []int
+	for t := range targets {
+		sorted = append(sorted, t)
+	}
+	sort.Ints(sorted)
+	for _, t := range sorted {
+		w("| %d |", t)
+		for _, r := range runs {
+			var st *StepResult
+			for i := range r.Steps {
+				if r.Steps[i].Target == t {
+					st = &r.Steps[i]
+				}
+			}
+			if st == nil {
+				w(" | | | | | |")
+				continue
+			}
+			ok := "pass"
+			if !st.Passed {
+				ok = "FAIL"
+			}
+			var fails int64
+			for _, n := range st.Failures {
+				fails += n
+			}
+			p := st.Processes[serverProcess(r)]
+			w(" %s | %.0f | %.0f | %.2f | %.0f | %d |", ok, st.AvgMbps, st.TTFBp99ms, p.CoresAvg, p.RSSPeakMB, fails)
+		}
+		w("\n")
+	}
+	return b.String()
+}
+
+func renderCompareHTML(runs []*Run) string {
+	type series struct {
+		Label  string       `json:"label"`
+		Server string       `json:"server"`
+		Steps  []StepResult `json:"steps"`
+		With   []string     `json:"with"`
+		Config Config       `json:"config"`
+	}
+	var all []series
+	for _, r := range runs {
+		all = append(all, series{Label: runLabel(r), Server: serverProcess(r), Steps: r.Steps, With: r.Config.With, Config: r.Config})
+	}
+	data, _ := json.Marshal(all)
+	safe := strings.ReplaceAll(string(data), "</", "<\\/")
+	var labels []string
+	for _, r := range runs {
+		labels = append(labels, r.Scenario)
+	}
+	page := strings.Replace(comparePage, "__TITLE__", strings.Join(labels, " vs "), 1)
+	return strings.Replace(page, "__RUNS__", safe, 1)
+}
+
+const comparePage = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root { --bg:#ffffff; --ink:#222222; --muted:#666666; --line:#cccccc; --grid:#e8e8e8; --head:#f2f2f2; --pass:#1a7f37; --fail:#c62828; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#1e1e1e; --ink:#e0e0e0; --muted:#9a9a9a; --line:#444444; --grid:#333333; --head:#2a2a2a; --pass:#4caf50; --fail:#ef5350; } }
+:root[data-theme="dark"] { --bg:#1e1e1e; --ink:#e0e0e0; --muted:#9a9a9a; --line:#444444; --grid:#333333; --head:#2a2a2a; --pass:#4caf50; --fail:#ef5350; }
+* { box-sizing:border-box; }
+body { margin:0; padding-block:1.5rem 3rem; padding-inline:1.25rem; font:14px/1.5 Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); }
+main { max-width:1180px; margin-inline:auto; }
+h1 { font-size:1.5rem; margin:0 0 .25rem; } h2 { font-size:1.1rem; margin:2rem 0 .5rem; } h3 { font-size:.95rem; margin:0 0 .3rem; }
+p { margin:.25rem 0; } .muted { color:var(--muted); }
+.wrap { overflow-x:auto; }
+table { border-collapse:collapse; font-size:.85rem; font-variant-numeric:tabular-nums; }
+th, td { padding:.3rem .55rem; border:1px solid var(--line); text-align:right; white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; } th { background:var(--head); font-weight:bold; }
+.pass { color:var(--pass); font-weight:bold; } .fail { color:var(--fail); font-weight:bold; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:1.5rem 2rem; }
+svg { width:100%; height:auto; display:block; max-width:100%; }
+.axis { font-size:10px; fill:var(--muted); font-family:Arial, Helvetica, sans-serif; } .gridline { stroke:var(--grid); }
+.legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; } .legend span { margin-right:1rem; }
+.legend i { display:inline-block; width:12px; height:3px; margin-right:.35rem; vertical-align:middle; }
+@media (max-width: 500px) { .grid { grid-template-columns:1fr; } body { padding-inline:1rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1 id="title"></h1>
+<p class="muted">Same ramp rules for every run; charts are over the listener count so the servers line up. A cross marks the step that failed.</p>
+<h2>Summary</h2>
+<div class="wrap"><table id="summary"></table></div>
+<h2>Over the listener count</h2>
+<div class="grid" id="charts"></div>
+<h2>Steps</h2>
+<div class="wrap"><table id="steps"></table></div>
+</main>
+<script>
+const RUNS = __RUNS__;
+const PALETTE = ["#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd","#17becf"];
+const fmt = (v, d = 1) => v == null || isNaN(v) ? "-" : Number(v).toFixed(d);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const dur = s => s / 1e9 >= 60 ? (s / 6e10).toFixed(s % 6e10 ? 1 : 0) + " min" : s / 1e9 + " s";
+document.getElementById("title").textContent = RUNS.map(r => r.label).join(" vs ");
+const server = (r, s) => (s.processes || {})[r.server] || {};
+const best = r => r.steps.filter(s => s.passed).pop();
+const fails = s => Object.values(s.failures || {}).reduce((a, b) => a + b, 0);
+
+let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>ramp</th></tr>";
+for (const r of RUNS) {
+  const b = best(r), c = r.config;
+  const peak = Math.max(0, ...r.steps.filter(s => s.passed).map(s => s.avg_mbps));
+  h += "<tr><td>" + esc(r.label) + "</td><td>" + esc((r.with || []).join(", ")) + "</td><td>" + (b ? b.peak_live + (r.steps.every(s => s.passed) ? " (maximum, not a ceiling)" : "") : "no step passed") +
+    "</td><td>" + fmt(peak, 0) + "</td><td>" + (b ? fmt(server(r, b).cores_avg, 2) : "-") + "</td><td>" + (b ? fmt(server(r, b).rss_peak_mb, 0) + " MB" : "-") +
+    "</td><td>" + (b ? fmt(b.ttfb_p50_ms, 0) + " / " + fmt(b.ttfb_p99_ms, 0) + " ms" : "-") + "</td><td>" + c.start + " +" + c.step + " up to " + c.max + ", hold " + dur(c.hold) + "</td></tr>";
+}
+document.getElementById("summary").innerHTML = h;
+
+const targets = [...new Set(RUNS.flatMap(r => r.steps.map(s => s.target)))].sort((a, b) => a - b);
+let t = "<tr><th>listeners</th>" + RUNS.map(r => "<th>" + esc(r.label) + "</th><th>Mbit/s</th><th>ttfb p99 ms</th><th>server cores</th><th>server MB</th><th>failures</th>").join("") + "</tr>";
+for (const target of targets) {
+  t += "<tr><td>" + target + "</td>";
+  for (const r of RUNS) {
+    const s = r.steps.find(s => s.target === target);
+    if (!s) { t += "<td></td><td></td><td></td><td></td><td></td><td></td>"; continue; }
+    const p = server(r, s);
+    t += "<td class='" + (s.passed ? "pass'>pass" : "fail'>FAIL") + "</td><td>" + fmt(s.avg_mbps, 0) + "</td><td>" + fmt(s.ttfb_p99_ms, 0) + "</td><td>" + fmt(p.cores_avg, 2) + "</td><td>" + fmt(p.rss_peak_mb, 0) + "</td><td>" + fails(s) + "</td>";
+  }
+  t += "</tr>";
+}
+document.getElementById("steps").innerHTML = t;
+
+function chart(title, unit, value) {
+  const W = 600, H = 250, L = 54, R = 14, T = 16, B = 30;
+  const series = RUNS.map(r => ({ name: r.label, points: r.steps.map(s => [s.peak_live, value(r, s), !s.passed]).filter(p => p[1] != null && !isNaN(p[1])) }));
+  const xs = series.flatMap(s => s.points.map(p => p[0])), ys = series.flatMap(s => s.points.map(p => p[1]));
+  if (!xs.length) return;
+  const xmax = Math.max(...xs) * 1.05, ymax = Math.max(...ys) * 1.08 || 1;
+  const sx = x => L + x / xmax * (W - L - R), sy = y => T + (1 - y / ymax) * (H - T - B);
+  let g = "";
+  for (const y of ticks(ymax, 5)) g += "<line class='gridline' x1='" + L + "' x2='" + (W - R) + "' y1='" + sy(y) + "' y2='" + sy(y) + "'/><text class='axis' x='" + (L - 6) + "' y='" + (sy(y) + 3.5) + "' text-anchor='end'>" + tick(y) + "</text>";
+  for (const x of ticks(xmax, 6)) g += "<text class='axis' x='" + sx(x) + "' y='" + (H - 8) + "' text-anchor='middle'>" + tick(x) + "</text>";
+  series.forEach((s, i) => {
+    const color = PALETTE[i % PALETTE.length];
+    g += "<path fill='none' stroke='" + color + "' stroke-width='1.6' stroke-linejoin='round' d='" + s.points.map((p, j) => (j ? "L" : "M") + sx(p[0]).toFixed(1) + " " + sy(p[1]).toFixed(1)).join("") + "'/>";
+    for (const p of s.points) {
+      const x = sx(p[0]).toFixed(1), y = sy(p[1]).toFixed(1);
+      g += p[2] ? "<path stroke='" + color + "' stroke-width='1.6' d='M" + (x - 4) + " " + (y - 4) + "L" + (+x + 4) + " " + (+y + 4) + "M" + (x - 4) + " " + (+y + 4) + "L" + (+x + 4) + " " + (y - 4) + "'/>" : "<circle cx='" + x + "' cy='" + y + "' r='2.5' fill='" + color + "'/>";
+    }
+  });
+  if (unit) g += "<text class='axis' x='" + (W - R) + "' y='" + (H - 8) + "' text-anchor='end'>" + esc(unit) + "</text>";
+  const div = document.createElement("div");
+  div.innerHTML = "<h3>" + esc(title) + "</h3><svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='" + esc(title) + "'>" + g + "</svg><div class='legend'>" +
+    series.map((s, i) => "<span><i style='background:" + PALETTE[i % PALETTE.length] + "'></i>" + esc(s.name) + "</span>").join("") + "</div>";
+  document.getElementById("charts").appendChild(div);
+}
+function ticks(max, n) { const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map(m => m * p).find(s => s >= raw); const out = []; for (let v = 0; v <= max; v += step) out.push(+v.toFixed(6)); return out; }
+function tick(v) { return v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + "k" : String(+v.toFixed(2)); }
+
+chart("Throughput", "Mbit/s", (r, s) => s.avg_mbps);
+chart("Server CPU", "cores", (r, s) => server(r, s).cores_avg);
+chart("Server memory", "MB", (r, s) => server(r, s).rss_peak_mb);
+chart("Time to first byte, p99", "ms", (r, s) => s.ttfb_p99_ms);
+chart("Time to first byte, median", "ms", (r, s) => s.ttfb_p50_ms);
+chart("Failed listeners per step", "", (r, s) => fails(s));
+</script>
+</body>
+</html>
+`

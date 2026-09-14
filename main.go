@@ -18,6 +18,8 @@ func main() {
 		err = serveCmd(os.Args[2:])
 	case "combine":
 		err = combineCmd(os.Args[2:])
+	case "compare":
+		err = compareCmd(os.Args[2:])
 	case "report":
 		err = reportCmd(os.Args[2:])
 	default:
@@ -35,6 +37,8 @@ func usage() {
   icetest serve [flags] <scenario-dir>  start the scenario and record its processes until stopped (server box of a two-machine run)
   icetest combine -o <out-dir> <run-dir>...
                                        fold the runs of several load boxes against one server into one run
+  icetest compare -o <out-dir> <run-dir> <run-dir>...
+                                       several runs side by side, over the listener count
   icetest report [--merge serve.json] <run-dir>
                                        re-render report.md and report.html from run.json, folding in a serve recording
 run -h lists the flags.`)

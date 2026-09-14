@@ -13,7 +13,8 @@
 #   MACHINE_TYPE  c3-standard-8       LOAD_COUNT 1     LOAD_MACHINE_TYPE c3-standard-8
 #   SPOT          true                LIQUIDSOAP_RELEASE  rolling-release-v2.5.x
 #   START 1000  STEP 1000  MAX 30000  HOLD 60s   the ramp, in listeners over all load boxes
-#   RUN_FLAGS     extra icetest run flags, e.g. --connect-rate 250 --churn 10m
+#   CONNECT_RATE 300   new connections per second over all load boxes
+#   RUN_FLAGS     extra icetest run flags, per box, e.g. --churn 10m
 #   WITH          optional scenario parts for serve and run, e.g. MP3,OPUS
 #   SERVE_ENV     NAME=value settings for the server-side script, e.g. FRAME=0.2 (space-separated)
 set -eu
@@ -21,7 +22,7 @@ cd "$(dirname "$0")/.."
 : "${GCP_PROJECT:?set GCP_PROJECT}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 LOAD_COUNT="${LOAD_COUNT:-1}"
-START="${START:-1000}"; STEP="${STEP:-1000}"; MAX="${MAX:-30000}"; HOLD="${HOLD:-60s}"
+START="${START:-1000}"; STEP="${STEP:-1000}"; MAX="${MAX:-30000}"; HOLD="${HOLD:-60s}"; CONNECT_RATE="${CONNECT_RATE:-300}"
 RUN_FLAGS="${RUN_FLAGS:-}"
 WITH_FLAG=""; [ -z "${WITH:-}" ] || WITH_FLAG="--with $WITH"
 ENV_FLAGS=""; for kv in ${SERVE_ENV:-}; do ENV_FLAGS="$ENV_FLAGS --env $kv"; done
@@ -100,13 +101,13 @@ run() {
     # A server that hung on its way down would answer the probes in place of the new one.
     ssh_box server "pkill -9 -x icetest; pkill -9 -x liquidsoap; pkill -9 -x icecast; pkill -9 -x ffmpeg; sleep 1; rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG $ENV_FLAGS --port 8000 scenarios/$scenario > serve.log 2>&1 &"
     until ssh_box server "ls results/$scenario/serve-*/ready" >/dev/null 2>&1; do sleep 5; done
-    echo "== $scenario: ramping $START +$STEP up to $MAX over $LOAD_COUNT load box(es), hold $HOLD"
+    echo "== $scenario: ramping $START +$STEP up to $MAX at $CONNECT_RATE/s over $LOAD_COUNT load box(es), hold $HOLD"
     # The runs are detached and polled for their results: a session held open
     # for an hour does not survive a box tearing down tens of thousands of
     # connections.
     for role in $boxes; do
       bind="$(bind_addresses "$role")"
-      ssh_box "$role" "rm -rf results/$scenario; nohup ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD $RUN_FLAGS $WITH_FLAG scenarios/$scenario > run.log 2>&1 &"
+      ssh_box "$role" "rm -rf results/$scenario; nohup ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD --connect-rate $(share "$CONNECT_RATE") $RUN_FLAGS $WITH_FLAG scenarios/$scenario > run.log 2>&1 &"
     done
     for role in $boxes; do : > "$out/$role.log"; done
     while :; do

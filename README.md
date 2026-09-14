@@ -211,7 +211,7 @@ WITH=MP3 LOAD_COUNT=3 START=6000 STEP=6000 MAX=150000 deploy/bench.sh run harbor
 LOAD_COUNT=3 deploy/bench.sh down                       # tofu destroy
 ```
 
-The ramp (`START`, `STEP`, `MAX`, `HOLD`) counts listeners over all load
+The ramp (`START`, `STEP`, `MAX`, `HOLD`) and `CONNECT_RATE` count over all load
 boxes; each box drives an equal share and connects from its own block of
 alias addresses, so ports are never the limit. Pass the same `LOAD_COUNT`
 and machine types to every call so the OpenTofu variables match what is

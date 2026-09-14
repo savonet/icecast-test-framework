@@ -74,6 +74,9 @@ const fmt = (v, d = 1) => v == null ? "-" : Number(v).toFixed(d);
 const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const steps = RUN.steps || [], samples = RUN.samples || [], ticks = RUN.ticks || [];
 const dur = s => s / 1e9 >= 60 ? (s / 6e10).toFixed(s % 6e10 ? 1 : 0) + " min" : s / 1e9 + " s";
+const isLoad = p => p.startsWith("icetest");
+const procs = [...new Set(samples.map(s => s.process))].filter(p => !isLoad(p)).sort();
+const loadBoxes = new Set(), loadPeak = steps.reduce((m, s) => Math.max(m, ...Object.entries(s.processes || {}).filter(([p]) => isLoad(p)).map(([p, q]) => (loadBoxes.add(p), q.cores_peak))), 0);
 
 document.getElementById("title").textContent = RUN.scenario;
 document.getElementById("desc").textContent = RUN.description || "";
@@ -96,9 +99,6 @@ else if (RUN.max_reached) v.innerHTML = "<b>Every step passed up to the configur
 else v.innerHTML = "<b>Ceiling: " + RUN.ceiling + " listeners.</b> The next step failed.";
 if (firstFail) v.innerHTML += "<p>First failing step, " + firstFail.target + " listeners:</p><ul>" + firstFail.reasons.map(r => "<li>" + esc(r) + "</li>").join("") + "</ul>";
 
-const isLoad = p => p.startsWith("icetest");
-const procs = [...new Set(samples.map(s => s.process))].filter(p => !isLoad(p)).sort();
-const loadBoxes = new Set(), loadPeak = steps.reduce((m, s) => Math.max(m, ...Object.entries(s.processes || {}).filter(([p]) => isLoad(p)).map(([p, q]) => (loadBoxes.add(p), q.cores_peak))), 0);
 const best = steps.filter(s => s.passed).pop() || firstFail || last;
 const server = procs.find(p => p !== "icetest") || procs[0];
 if (best) {

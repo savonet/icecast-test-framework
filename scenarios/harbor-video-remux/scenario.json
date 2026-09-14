@@ -4,11 +4,23 @@
     {
       "name": "liquidsoap",
       "server": true,
-      "prepare": [["${LIQUIDSOAP}", "--cache-only", "main.liq"]],
-      "cmd": ["${LIQUIDSOAP}", "main.liq"]
+      "prepare": [
+        [
+          "${LIQUIDSOAP}",
+          "--cache-only",
+          "main.liq"
+        ]
+      ],
+      "cmd": [
+        "${LIQUIDSOAP}",
+        "main.liq"
+      ]
     }
   ],
   "mounts": [
-    {"path": "/video", "content_type": "video/x-matroska"}
+    {
+      "path": "/video",
+      "content_type": "video/x-matroska"
+    }
   ]
 }

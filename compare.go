@@ -98,8 +98,11 @@ func mergeScenarios(runs []*Run) []*Run {
 			}
 		}
 		// A failure below a level another ramp passed was that ramp's surge,
-		// not the server's ceiling.
-		m.Steps = slices.DeleteFunc(m.Steps, func(st StepResult) bool { return !st.Passed && st.Target < m.Ceiling })
+		// not the server's ceiling; a step the fleet never reached is a
+		// collapse with nothing measured, not a point on the curve.
+		m.Steps = slices.DeleteFunc(m.Steps, func(st StepResult) bool {
+			return !st.Passed && (st.Target < m.Ceiling || st.PeakLive < st.Target/2)
+		})
 		m.MaxReached = true
 		for _, st := range m.Steps {
 			if !st.Passed {

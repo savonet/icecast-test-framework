@@ -66,11 +66,13 @@ func combineRuns(runs []*Run) *Run {
 		Events:      []string{},
 	}
 	c.Config.Start, c.Config.Step, c.Config.Max = 0, 0, 0
+	c.Config.Listener.ConnectRate = 0
 	steps := len(first.Steps)
 	for i, r := range runs {
 		c.Config.Start += r.Config.Start
 		c.Config.Step += r.Config.Step
 		c.Config.Max += r.Config.Max
+		c.Config.Listener.ConnectRate += r.Config.Listener.ConnectRate
 		if r.Started.Before(c.Started) {
 			c.Started = r.Started
 		}

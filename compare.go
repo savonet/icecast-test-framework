@@ -59,11 +59,21 @@ func serverProcess(r *Run) string {
 	return best
 }
 
+// A label names the server and the ramp: the same scenario is often run
+// twice with different steps or admission rates.
 func runLabel(r *Run) string {
+	label := r.Scenario
 	if p := serverProcess(r); p != "" {
-		return r.Scenario + " (" + p + ")"
+		label += " (" + p + ")"
 	}
-	return r.Scenario
+	return fmt.Sprintf("%s, %s+%s at %d/s", label, kilo(r.Config.Start), kilo(r.Config.Step), r.Config.Listener.ConnectRate)
+}
+
+func kilo(n int) string {
+	if n%1000 == 0 {
+		return fmt.Sprintf("%dk", n/1000)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }
 
 func bestStep(r *Run) *StepResult {

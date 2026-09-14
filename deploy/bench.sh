@@ -112,7 +112,7 @@ run() {
     while :; do
       done_count=0
       for role in $boxes; do
-        ssh_box "$role" "cat run.log; ls results/$scenario/*/run.json >/dev/null 2>&1 && echo __DONE__" > "$out/$role.new" 2>/dev/null || continue
+        ssh_box "$role" "cat run.log; ls results/$scenario/*/run.json >/dev/null 2>&1 && echo __DONE__; true" > "$out/$role.new" 2>/dev/null || continue
         grep -q "^__DONE__$" "$out/$role.new" && done_count=$((done_count + 1))
         grep -v "^__DONE__$" "$out/$role.new" > "$out/$role.cur"
         diff --changed-group-format='%>' --unchanged-group-format='' "$out/$role.log" "$out/$role.cur" | grep -E "^step|^  (pass|FAIL)|^icetest:" | sed "s/^/[$role] /"

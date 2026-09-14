@@ -16,6 +16,16 @@ variable "machine_type" {
   type    = string
   default = "c3-standard-8"
 }
+# The load box drives more listeners than the server serves, so it gets a
+# larger shape and a block of alias addresses to draw source ports from.
+variable "load_machine_type" {
+  type    = string
+  default = "c3-standard-22"
+}
+variable "load_alias_range" {
+  type    = string
+  default = "/28"
+}
 variable "spot" {
   type    = bool
   default = true
@@ -42,9 +52,14 @@ locals {
 resource "google_compute_instance" "box" {
   for_each     = toset(local.roles)
   name         = "icetest-${each.key}"
-  machine_type = var.machine_type
+  machine_type = each.key == "load" ? var.load_machine_type : var.machine_type
   zone         = var.zone
   tags         = ["icetest"]
+
+  # A shape change is applied by stopping the box in place; a preempted or
+  # stopped box is started again by the next apply.
+  allow_stopping_for_update = true
+  desired_status            = "RUNNING"
 
   boot_disk {
     initialize_params {
@@ -58,6 +73,12 @@ resource "google_compute_instance" "box" {
   network_interface {
     network = "default"
     access_config {}
+    dynamic "alias_ip_range" {
+      for_each = each.key == "load" ? [var.load_alias_range] : []
+      content {
+        ip_cidr_range = alias_ip_range.value
+      }
+    }
   }
 
   scheduling {
@@ -75,6 +96,9 @@ resource "google_compute_instance" "box" {
 
 output "server_internal_ip" {
   value = google_compute_instance.box["server"].network_interface[0].network_ip
+}
+output "load_alias_range" {
+  value = google_compute_instance.box["load"].network_interface[0].alias_ip_range[0].ip_cidr_range
 }
 output "zone" { value = var.zone }
 output "project" { value = var.project }

@@ -3,12 +3,14 @@
 #
 #   deploy/bench.sh up                      create both boxes, provision, copy binary, scenarios and audio
 #   deploy/bench.sh run <scenario>...       serve on the server box, ramp from the load box, fetch results
+#   deploy/bench.sh liquidsoap <file.deb>   install a liquidsoap package on the server box (e.g. a CI artifact)
 #   deploy/bench.sh down                    destroy both boxes
 #
 # Environment:
 #   GCP_PROJECT   (required)          AUDIO      local audio directory (required by up)
 #   GCP_ZONE      us-central1-a       VIDEO      local video file, copied when set
 #   MACHINE_TYPE  c3-standard-8       RUN_FLAGS  icetest run flags (default: --start 1000 --step 1000 --max 30000 --hold 60s)
+#   LOAD_MACHINE_TYPE c3-standard-22  BIND       source addresses for the listeners (default: the load box's alias range)
 #   SPOT          true                LIQUIDSOAP_RELEASE  rolling-release-v2.5.x
 #   WITH          optional scenario parts for serve and run, e.g. FLAC
 set -eu
@@ -18,12 +20,22 @@ ZONE="${GCP_ZONE:-us-central1-a}"
 RUN_FLAGS="${RUN_FLAGS:---start 1000 --step 1000 --max 30000 --hold 60s}"
 WITH_FLAG=""; [ -z "${WITH:-}" ] || WITH_FLAG="--with $WITH"
 TF="tofu -chdir=deploy/gcp"
-TFVARS="-var project=$GCP_PROJECT -var zone=$ZONE -var machine_type=${MACHINE_TYPE:-c3-standard-8} -var spot=${SPOT:-true} -var liquidsoap_release=${LIQUIDSOAP_RELEASE:-rolling-release-v2.5.x}"
+TFVARS="-var project=$GCP_PROJECT -var zone=$ZONE -var machine_type=${MACHINE_TYPE:-c3-standard-8} -var load_machine_type=${LOAD_MACHINE_TYPE:-c3-standard-22} -var spot=${SPOT:-true} -var liquidsoap_release=${LIQUIDSOAP_RELEASE:-rolling-release-v2.5.x}"
 
 ssh_box() { # ssh_box <role> <command>
   box="icetest-$1"; shift
   gcloud compute ssh "$box" --project "$GCP_PROJECT" --zone "$ZONE" --quiet --command "$*"
 }
+# The alias addresses of the load box, one per line.
+alias_addresses() {
+  python3 -c "import ipaddress, sys; print('\n'.join(str(h) for h in ipaddress.ip_network(sys.argv[1]).hosts()))" "$($TF output -raw load_alias_range)"
+}
+
+# Every listener source address: the primary one plus the aliases.
+bind_addresses() {
+  { ssh_box load "hostname -I | cut -d' ' -f1"; alias_addresses; } | tr -d '\r' | paste -sd, -
+}
+
 push_tar() { # push_tar <role> <local dir> <remote dir>
   # Uncompressed: the payload is mostly mp3, and a dot per 10 MB shows the upload moving.
   echo "  $(du -sm "$2" | cut -f1) MB to icetest-$1:$3"
@@ -46,6 +58,9 @@ up() {
     echo "provisioning icetest-$role (apt, ffmpeg, icecast2, the liquidsoap .deb: a few minutes)"
     ssh_box $role 'sudo google_metadata_script_runner startup 2>&1 | grep -v "^$"'
   done
+  # Alias addresses are routed to the box; the kernel also has to own them to
+  # bind them as sources.
+  ssh_box load "dev=\$(ip route | awk '/default/ {print \$5; exit}'); for ip in $(alias_addresses | paste -sd' ' -); do sudo ip addr add \$ip/32 dev \$dev 2>/dev/null || true; done; ip -4 addr show dev \$dev | grep -c inet"
   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/icetest-linux .
   for role in server load; do
     gcloud compute scp /tmp/icetest-linux "icetest-$role:icetest" --project "$GCP_PROJECT" --zone "$ZONE" --quiet
@@ -61,6 +76,7 @@ up() {
 
 run() {
   server_ip="$($TF output -raw server_internal_ip)"
+  bind="${BIND:-$(bind_addresses)}"
   for scenario in "$@"; do
     stamp="$(date +%Y%m%d-%H%M%S)"
     out="results/cloud/$scenario/$stamp"
@@ -70,8 +86,8 @@ run() {
     ssh_box server "rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG --port 8000 scenarios/$scenario > serve.log 2>&1 &"
     until ssh_box server "ls results/$scenario/serve-*/ready" >/dev/null 2>&1; do sleep 5; done
     echo "== $scenario: ramping from icetest-load"
-    ssh_box load "rm -rf results/$scenario; ./icetest run --remote $server_ip:8000 $RUN_FLAGS $WITH_FLAG scenarios/$scenario" || true
-    ssh_box server "pkill -INT -f 'icetest serve'; while pgrep -f 'icetest serve' >/dev/null; do sleep 1; done"
+    ssh_box load "rm -rf results/$scenario; ./icetest run --remote $server_ip:8000 --bind $bind $RUN_FLAGS $WITH_FLAG scenarios/$scenario" || true
+    ssh_box server "pkill -INT -x icetest; while pgrep -x icetest >/dev/null; do sleep 1; done"
     for role in load server; do
       gcloud compute scp --recurse "icetest-$role:results/$scenario" "$out/$role" --project "$GCP_PROJECT" --zone "$ZONE" --quiet
     done
@@ -83,6 +99,13 @@ run() {
   done
 }
 
+install_liquidsoap() {
+  deb="$1"
+  [ -f "$deb" ] || { echo "$deb is not a file" >&2; exit 2; }
+  gcloud compute scp "$deb" "icetest-server:liquidsoap.deb" --project "$GCP_PROJECT" --zone "$ZONE" --quiet
+  ssh_box server 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades ./liquidsoap.deb >/dev/null && liquidsoap --version'
+}
+
 down() {
   $TF destroy -input=false -auto-approve $TFVARS
 }
@@ -90,6 +113,7 @@ down() {
 case "${1:-}" in
   up) up ;;
   run) shift; [ $# -gt 0 ] || { echo "usage: bench.sh run <scenario>..." >&2; exit 2; }; run "$@" ;;
+  liquidsoap) [ -n "${2:-}" ] || { echo "usage: bench.sh liquidsoap <file.deb>" >&2; exit 2; }; install_liquidsoap "$2" ;;
   down) down ;;
-  *) sed -n '2,13p' "$0"; exit 2 ;;
+  *) sed -n '2,14p' "$0"; exit 2 ;;
 esac

@@ -40,9 +40,11 @@ push_tar() { # push_tar <role> <local dir> <remote dir>
 }
 load_boxes() { $TF output -json load_boxes | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))"; }
 
-# The alias addresses of a load box, one per line.
+# The alias addresses of a load box, one per line. Read from the instance:
+# the OpenTofu state only knows the allocated range after a refresh.
 alias_addresses() { # alias_addresses <role>
-  $TF output -json load_alias_ranges | python3 -c "import ipaddress, json, sys; print('\n'.join(str(h) for h in ipaddress.ip_network(json.load(sys.stdin)[sys.argv[1]]).hosts()))" "$1"
+  range="$(gcloud compute instances describe "icetest-$1" --project "$GCP_PROJECT" --zone "$ZONE" --format='value(networkInterfaces[0].aliasIpRanges[0].ipCidrRange)')"
+  python3 -c "import ipaddress, sys; print('\n'.join(str(h) for h in ipaddress.ip_network(sys.argv[1]).hosts()))" "$range"
 }
 
 # Every listener source address of a load box: the primary one plus the aliases.

@@ -64,6 +64,9 @@ func renderReport(r *Run) string {
 	c := r.Config
 	w("- ramp: %d +%d up to %d, hold %s, churn %s, icy %.0f%%, stall %s, fail threshold %.1f%%\n",
 		c.Start, c.Step, c.Max, c.Hold, c.Listener.Churn, c.Listener.ICY*100, c.Listener.Stall, c.FailThreshold*100)
+	if l := loadSummary(r); l != "" {
+		w("- %s\n", l)
+	}
 	if c.Remote != "" {
 		if r.ServerHost != nil {
 			w("- remote server: %s, %d cpus, %d MB, %s %s", c.Remote, r.ServerHost.CPUs, r.ServerHost.MemMB, r.ServerHost.Kernel, r.ServerHost.Arch)
@@ -191,12 +194,16 @@ func failureList(f map[string]int64) string {
 	return strings.Join(parts, " ")
 }
 
+// The load generators are left out of the tables: their cost only matters
+// as proof that a failure was the server's, which loadSummary states.
+func isLoadGenerator(name string) bool { return strings.HasPrefix(name, "icetest") }
+
 func procNames(r *Run) []string {
 	seen := map[string]bool{}
 	var names []string
 	for _, s := range r.Steps {
 		for p := range s.Processes {
-			if !seen[p] {
+			if !seen[p] && !isLoadGenerator(p) {
 				seen[p] = true
 				names = append(names, p)
 			}
@@ -204,4 +211,23 @@ func procNames(r *Run) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// loadSummary is one line on the load generators: how many boxes and the
+// busiest any of them got, so a failing step can be read against it.
+func loadSummary(r *Run) string {
+	boxes := map[string]bool{}
+	var peak float64
+	for _, s := range r.Steps {
+		for p, ps := range s.Processes {
+			if isLoadGenerator(p) {
+				boxes[p] = true
+				peak = max(peak, ps.CoresPeak)
+			}
+		}
+	}
+	if len(boxes) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("load generators: %d box(es), peak %.1f cores on the busiest", len(boxes), peak)
 }

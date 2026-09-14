@@ -83,6 +83,7 @@ document.getElementById("meta").innerHTML = [
   ["duration", Math.round((Date.parse(RUN.ended) - t0) / 1000) + " s"],
   ["host", h.cpus + " cpus, " + h.mem_mb + " MB, " + h.kernel + " " + h.arch],
   h.liquidsoap ? ["liquidsoap", h.liquidsoap] : null,
+  loadBoxes.size ? ["load generators", loadBoxes.size + " box(es), peak " + fmt(loadPeak) + " cores on the busiest"] : null,
   c.remote ? ["remote server", c.remote + (RUN.server_host ? ", " + RUN.server_host.cpus + " cpus, " + RUN.server_host.mem_mb + " MB, " + RUN.server_host.kernel + " " + RUN.server_host.arch + (RUN.server_host.liquidsoap ? ", " + RUN.server_host.liquidsoap : "") : ", not sampled")] : null,
   ["ramp", c.start + " +" + c.step + " up to " + c.max + ", hold " + dur(c.hold)],
   ["listeners", "churn " + (c.Listener.Churn ? dur(c.Listener.Churn) : "off") + ", icy " + Math.round(c.Listener.ICY * 100) + "%, stall " + dur(c.Listener.Stall) + ", fail threshold " + (c.fail_threshold * 100).toFixed(1) + "%"],
@@ -95,7 +96,9 @@ else if (RUN.max_reached) v.innerHTML = "<b>Every step passed up to the configur
 else v.innerHTML = "<b>Ceiling: " + RUN.ceiling + " listeners.</b> The next step failed.";
 if (firstFail) v.innerHTML += "<p>First failing step, " + firstFail.target + " listeners:</p><ul>" + firstFail.reasons.map(r => "<li>" + esc(r) + "</li>").join("") + "</ul>";
 
-const procs = [...new Set(samples.map(s => s.process))].sort();
+const isLoad = p => p.startsWith("icetest");
+const procs = [...new Set(samples.map(s => s.process))].filter(p => !isLoad(p)).sort();
+const loadBoxes = new Set(), loadPeak = steps.reduce((m, s) => Math.max(m, ...Object.entries(s.processes || {}).filter(([p]) => isLoad(p)).map(([p, q]) => (loadBoxes.add(p), q.cores_peak))), 0);
 const best = steps.filter(s => s.passed).pop() || firstFail || last;
 const server = procs.find(p => p !== "icetest") || procs[0];
 if (best) {

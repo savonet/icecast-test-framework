@@ -39,7 +39,8 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ffmpeg icecast2 curl ca-certificates
 systemctl disable --now icecast2 2>/dev/null || true
-# The reference scenario's icecast.xml uses the Fedora layout of the web files.
+# The reference scenario uses the Fedora names: the binary and the web files.
+[ -e /usr/local/bin/icecast ] || ln -s /usr/bin/icecast2 /usr/local/bin/icecast
 [ -e /usr/share/icecast ] || ln -s /usr/share/icecast2 /usr/share/icecast
 
 # The asset name carries the commit hash, so it is looked up by pattern.

@@ -223,6 +223,7 @@ func renderCompare(runs []*Run) string {
 	w("\n### Admission\n\n")
 	w("- How fast new listeners arrive is part of the test and differs by server. **liquidsoap was measured under a surge of %d new connections per second with %s of patience; Icecast needed the rate cut to %d per second and %s of patience to admit listeners at all.**\n",
 		rateOf(runs, "liquidsoap"), timeoutOf(runs, "liquidsoap"), rateOf(runs, "icecast"), timeoutOf(runs, "icecast"))
+	w("- A server near its ceiling also has a surge limit below it: the point where a steady arrival of new listeners, each with its handshake and burst, no longer fits next to the listeners already served. The ceilings above were reached in small steps with a pause after each; a continuous arrival of 300 per second stalled the default frame at about 83k, where the 0.2 s frame took it to 124k without a stall.\n")
 	w("\n### Listeners\n\n")
 	w("- A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.\n")
 	w("- It counts the bytes it receives. That is the throughput figure. It does not decode audio.\n")
@@ -450,7 +451,7 @@ document.getElementById("setup").innerHTML =
     const l = by("liquidsoap"), i = by("icecast");
     if (!l || !i) return "How fast new listeners arrive is part of the test: " + RUNS.map(r => esc(r.server) + " at up to " + r.config.Listener.ConnectRate + " new connections per second, " + dur(r.config.Listener.ConnectTimeout) + " of patience").join("; ") + ".";
     return "How fast new listeners arrive is part of the test and differs by server. <b>liquidsoap was measured under a surge of " + l.config.Listener.ConnectRate + " new connections per second with " + dur(l.config.Listener.ConnectTimeout) + " of patience; Icecast needed the rate cut to " + i.config.Listener.ConnectRate + " per second and " + dur(i.config.Listener.ConnectTimeout) + " of patience to admit listeners at all.</b>";
-  })()]) +
+  })(), "A server near its ceiling also has a surge limit below it: the point where a steady arrival of new listeners, each with its handshake and burst, no longer fits next to the listeners already served. The ceilings above were reached in small steps with a pause after each; a continuous arrival of 300 per second stalled the default frame at about 83k, where the 0.2 s frame took it to 124k without a stall."]) +
   section("Listeners", [
     "A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.",
     "It counts the bytes it receives. That is the throughput figure. It does not decode audio.",

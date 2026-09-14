@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -89,11 +90,18 @@ func mergeScenarios(runs []*Run) []*Run {
 	for _, name := range order {
 		m := byScenario[name]
 		sort.Slice(m.Steps, func(i, j int) bool { return m.Steps[i].Target < m.Steps[j].Target })
-		m.Ceiling, m.MaxReached = 0, true
+		m.Ceiling = 0
 		for _, st := range m.Steps {
 			if st.Passed {
 				m.Ceiling = max(m.Ceiling, st.Target)
-			} else {
+			}
+		}
+		// A failure below a level another ramp passed was that ramp's surge,
+		// not the server's ceiling.
+		m.Steps = slices.DeleteFunc(m.Steps, func(st StepResult) bool { return !st.Passed && st.Target < m.Ceiling })
+		m.MaxReached = true
+		for _, st := range m.Steps {
+			if !st.Passed {
 				m.MaxReached = false
 			}
 		}

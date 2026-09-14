@@ -115,6 +115,31 @@ func serverProcess(r *Run) string {
 	return best
 }
 
+func minStart(runs []*Run) int {
+	m := runs[0].Config.Start
+	for _, r := range runs {
+		m = min(m, r.Config.Start)
+	}
+	return m
+}
+
+func maxTarget(runs []*Run) int {
+	m := 0
+	for _, r := range runs {
+		for _, s := range r.Steps {
+			m = max(m, s.Target)
+		}
+	}
+	return m
+}
+
+func canariesPerStep(r *Run) int {
+	if len(r.Steps) == 0 {
+		return 0
+	}
+	return r.Steps[0].CanaryOK + r.Steps[0].CanaryFail
+}
+
 func runLabel(r *Run) string {
 	if p := serverProcess(r); p != "" {
 		return r.Scenario + " (" + p + ")"
@@ -158,6 +183,7 @@ func renderCompare(runs []*Run) string {
 	}
 	c := runs[0].Config
 	w("\n### Listeners\n\n")
+	w("- The listener count of a step is its level on the charts, from %d to %d here, spread evenly over the load boxes.\n", minStart(runs), maxTarget(runs))
 	w("- A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.\n")
 	w("- It counts the bytes it receives. That is the throughput figure. It does not decode audio.\n")
 	w("- %.0f%% of listeners request ICY metadata and parse every interleaved block.\n", c.Listener.ICY*100)
@@ -166,7 +192,7 @@ func renderCompare(runs []*Run) string {
 		w("- Admission against %s: up to %d new connections per second over the fleet, %s to connect and read the headers.\n", serverProcess(r), r.Config.Listener.ConnectRate, r.Config.Listener.ConnectTimeout)
 	}
 	w("\n### Canaries\n\n")
-	w("- Decoding is checked by one ffmpeg process per mount and step. It joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", c.CanaryDuration)
+	w("- Decoding is checked by one ffmpeg process per load box, mount and step, %d per step here. Each joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", canariesPerStep(runs[0]), c.CanaryDuration)
 	w("\n### Pass rules\n\n")
 	w("- Each level is held for %s once reached.\n", c.Hold)
 	w("- A step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert.\n\n", c.FailThreshold*100)
@@ -380,12 +406,13 @@ document.getElementById("setup").innerHTML =
     sh ? "server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") : null,
     RUNS[0].load_boxes ? esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB" : null].filter(Boolean)) +
   section("Listeners", [
+    "The listener count of a step is its level on the charts, from " + Math.min(...RUNS.map(r => r.config.start)) + " to " + Math.max(...RUNS.flatMap(r => r.steps.map(s => s.target))) + " here, spread evenly over the load boxes.",
     "A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.",
     "It counts the bytes it receives. That is the throughput figure. It does not decode audio.",
     Math.round(c0.Listener.ICY * 100) + "% of listeners request ICY metadata and parse every interleaved block.",
     "A listener fails when it receives nothing for " + dur(c0.Listener.Stall) + ", when the server disconnects it, or when its rate over the last " + c0.Listener.Window + " s lags the median of its mount by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row.",
     ...RUNS.map(r => "Admission against " + esc(r.server) + ": up to " + r.config.Listener.ConnectRate + " new connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.")]) +
-  section("Canaries", ["Decoding is checked by one ffmpeg process per mount and step. It joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
+  section("Canaries", ["Decoding is checked by one ffmpeg process per load box, mount and step, " + (RUNS[0].steps.length ? RUNS[0].steps[0].canary_ok + RUNS[0].steps[0].canary_fail : 0) + " per step here. Each joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
   section("Pass rules", [
     "Each level is held for " + dur(c0.hold) + " once reached.",
     "A step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert."]);

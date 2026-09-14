@@ -320,6 +320,11 @@ func (p *Pool) stream(l *listener) string {
 	m.pending--
 	l.registered = true
 	m.mu.Unlock()
+	// Stop closes the connections it finds in live; one registered after its
+	// pass would otherwise stream on for as long as the server sends.
+	if p.stopping.Load() {
+		conn.Close()
+	}
 
 	if p.opts.Churn > 0 {
 		session := time.Duration(rand.ExpFloat64() * float64(p.opts.Churn))

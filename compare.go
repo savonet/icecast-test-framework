@@ -140,6 +140,25 @@ func renderCompare(runs []*Run) string {
 		labels = append(labels, runLabel(r))
 	}
 	w("# %s\n\n", strings.Join(labels, " vs "))
+	w("## Setup\n\n")
+	for _, r := range runs {
+		w("- **%s**: %s\n", runLabel(r), strings.TrimSpace(r.Description))
+	}
+	if h := runs[0].ServerHost; h != nil {
+		w("- server: %d cpus, %d MB, %s %s", h.CPUs, h.MemMB, h.Kernel, h.Arch)
+		if h.Liquidsoap != "" {
+			w(", %s", h.Liquidsoap)
+		}
+		w("\n")
+	}
+	if l := loadSummary(runs[0]); l != "" {
+		w("- %s; each load box: %d cpus, %d MB\n", l, runs[0].Host.CPUs, runs[0].Host.MemMB)
+	}
+	c := runs[0].Config
+	w("- listeners: raw HTTP clients, %.0f%% of them requesting ICY metadata, admitted at up to %d connections per second over the fleet, %s to connect and read the headers, failed after %s without a byte or when lagging the mount median by %.0f%% for %d s\n",
+		c.Listener.ICY*100, c.Listener.ConnectRate, c.Listener.ConnectTimeout, c.Listener.Stall, c.Listener.LagTolerance*100, c.Listener.LagTicks)
+	w("- steps: each level held for %s once reached; a step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on an ffmpeg canary that cannot decode the stream, or on a server log alert\n\n", c.Hold, c.FailThreshold*100)
+	w("## Summary\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
 		best := bestStep(r)
@@ -221,15 +240,20 @@ func renderCompare(runs []*Run) string {
 
 func renderCompareHTML(runs []*Run) string {
 	type series struct {
-		Label  string       `json:"label"`
-		Server string       `json:"server"`
-		Steps  []StepResult `json:"steps"`
-		With   []string     `json:"with"`
-		Config Config       `json:"config"`
+		Label       string       `json:"label"`
+		Server      string       `json:"server"`
+		Steps       []StepResult `json:"steps"`
+		With        []string     `json:"with"`
+		Config      Config       `json:"config"`
+		Description string       `json:"description"`
+		Host        HostInfo     `json:"host"`
+		ServerHost  *HostInfo    `json:"server_host"`
+		LoadBoxes   string       `json:"load_boxes"`
 	}
 	var all []series
 	for _, r := range runs {
-		all = append(all, series{Label: runLabel(r), Server: serverProcess(r), Steps: r.Steps, With: r.Config.With, Config: r.Config})
+		all = append(all, series{Label: runLabel(r), Server: serverProcess(r), Steps: r.Steps, With: r.Config.With, Config: r.Config,
+			Description: strings.TrimSpace(r.Description), Host: r.Host, ServerHost: r.ServerHost, LoadBoxes: loadSummary(r)})
 	}
 	data, _ := json.Marshal(all)
 	safe := strings.ReplaceAll(string(data), "</", "<\\/")
@@ -273,6 +297,8 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <main>
 <h1 id="title"></h1>
 <p class="muted">Same pass rules for every run, every ramp of a scenario folded into one series over the listener count so the servers line up. A cross marks a step that failed.</p>
+<h2>Setup</h2>
+<ul id="setup"></ul>
 <h2>Summary</h2>
 <div class="wrap"><table id="summary"></table></div>
 <h2>Over the listener count</h2>
@@ -291,6 +317,12 @@ const server = (r, s) => (s.processes || {})[r.server] || {};
 const best = r => r.steps.filter(s => s.passed).pop();
 const fails = s => Object.values(s.failures || {}).reduce((a, b) => a + b, 0);
 
+const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
+document.getElementById("setup").innerHTML = RUNS.map(r => "<li><b>" + esc(r.label) + "</b>: " + esc(r.description) + "</li>").join("") +
+  (sh ? "<li>server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") + "</li>" : "") +
+  (RUNS[0].load_boxes ? "<li>" + esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB</li>" : "") +
+  "<li>listeners: raw HTTP clients, " + Math.round(c0.Listener.ICY * 100) + "% of them requesting ICY metadata, admitted at up to " + c0.Listener.ConnectRate + " connections per second over the fleet, " + dur(c0.Listener.ConnectTimeout) + " to connect and read the headers, failed after " + dur(c0.Listener.Stall) + " without a byte or when lagging the mount median by " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s</li>" +
+  "<li>steps: each level held for " + dur(c0.hold) + " once reached; a step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on an ffmpeg canary that cannot decode the stream, or on a server log alert</li>";
 let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>range</th></tr>";
 for (const r of RUNS) {
   const b = best(r), c = r.config;

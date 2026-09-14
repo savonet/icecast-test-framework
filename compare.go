@@ -31,6 +31,7 @@ func compareCmd(args []string) error {
 		}
 		runs = append(runs, &r)
 	}
+	runs = mergeScenarios(runs)
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
@@ -43,6 +44,61 @@ func compareCmd(args []string) error {
 	}
 	fmt.Print(md)
 	return nil
+}
+
+// mergeScenarios folds the runs of one scenario into a single series over the
+// listener count. Where two runs stepped at the same target, the passing
+// one wins, then the later one.
+func mergeScenarios(runs []*Run) []*Run {
+	var order []string
+	byScenario := map[string]*Run{}
+	for _, r := range runs {
+		m, seen := byScenario[r.Scenario]
+		if !seen {
+			copy := *r
+			copy.Steps = nil
+			m = &copy
+			byScenario[r.Scenario] = m
+			order = append(order, r.Scenario)
+		}
+		for _, st := range r.Steps {
+			replaced := false
+			for i := range m.Steps {
+				if m.Steps[i].Target == st.Target {
+					if st.Passed || !m.Steps[i].Passed {
+						m.Steps[i] = st
+					}
+					replaced = true
+				}
+			}
+			if !replaced {
+				m.Steps = append(m.Steps, st)
+			}
+		}
+		m.Config.Start = min(m.Config.Start, r.Config.Start)
+		m.Config.Max = max(m.Config.Max, r.Config.Max)
+		if r.Started.Before(m.Started) {
+			m.Started = r.Started
+		}
+		if r.Ended.After(m.Ended) {
+			m.Ended = r.Ended
+		}
+	}
+	var out []*Run
+	for _, name := range order {
+		m := byScenario[name]
+		sort.Slice(m.Steps, func(i, j int) bool { return m.Steps[i].Target < m.Steps[j].Target })
+		m.Ceiling, m.MaxReached = 0, true
+		for _, st := range m.Steps {
+			if st.Passed {
+				m.Ceiling = max(m.Ceiling, st.Target)
+			} else {
+				m.MaxReached = false
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // serverProcess is the process holding the listener sockets: the one with
@@ -59,21 +115,11 @@ func serverProcess(r *Run) string {
 	return best
 }
 
-// A label names the server and the ramp: the same scenario is often run
-// twice with different steps or admission rates.
 func runLabel(r *Run) string {
-	label := r.Scenario
 	if p := serverProcess(r); p != "" {
-		label += " (" + p + ")"
+		return r.Scenario + " (" + p + ")"
 	}
-	return fmt.Sprintf("%s, %s+%s at %d/s", label, kilo(r.Config.Start), kilo(r.Config.Step), r.Config.Listener.ConnectRate)
-}
-
-func kilo(n int) string {
-	if n%1000 == 0 {
-		return fmt.Sprintf("%dk", n/1000)
-	}
-	return fmt.Sprintf("%.1fk", float64(n)/1000)
+	return r.Scenario
 }
 
 func bestStep(r *Run) *StepResult {
@@ -94,7 +140,7 @@ func renderCompare(runs []*Run) string {
 		labels = append(labels, runLabel(r))
 	}
 	w("# %s\n\n", strings.Join(labels, " vs "))
-	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | ramp |\n|---|---|---|---|---|---|---|---|\n")
+	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
 		best := bestStep(r)
 		verdict := "no step passed"
@@ -118,7 +164,11 @@ func renderCompare(runs []*Run) string {
 				peak = max(peak, s.AvgMbps)
 			}
 		}
-		w("| %s | %s | %s | %.0f | %s | %s | %s | %d +%d up to %d, hold %s |\n", runLabel(r), strings.Join(r.Config.With, ","), verdict, peak, cores, rss, ttfb, r.Config.Start, r.Config.Step, r.Config.Max, r.Config.Hold)
+		last := 0
+		if n := len(r.Steps); n > 0 {
+			last = r.Steps[n-1].Target
+		}
+		w("| %s | %s | %s | %.0f | %s | %s | %s | %d to %d, hold %s |\n", runLabel(r), strings.Join(r.Config.With, ","), verdict, peak, cores, rss, ttfb, r.Config.Start, last, r.Config.Hold)
 	}
 	w("\n## Steps\n\n| listeners |")
 	for _, l := range labels {
@@ -222,7 +272,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <body>
 <main>
 <h1 id="title"></h1>
-<p class="muted">Same ramp rules for every run; charts are over the listener count so the servers line up. A cross marks the step that failed.</p>
+<p class="muted">Same pass rules for every run, every ramp of a scenario folded into one series over the listener count so the servers line up. A cross marks a step that failed.</p>
 <h2>Summary</h2>
 <div class="wrap"><table id="summary"></table></div>
 <h2>Over the listener count</h2>
@@ -241,13 +291,13 @@ const server = (r, s) => (s.processes || {})[r.server] || {};
 const best = r => r.steps.filter(s => s.passed).pop();
 const fails = s => Object.values(s.failures || {}).reduce((a, b) => a + b, 0);
 
-let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>ramp</th></tr>";
+let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>range</th></tr>";
 for (const r of RUNS) {
   const b = best(r), c = r.config;
   const peak = Math.max(0, ...r.steps.filter(s => s.passed).map(s => s.avg_mbps));
   h += "<tr><td>" + esc(r.label) + "</td><td>" + esc((r.with || []).join(", ")) + "</td><td>" + (b ? b.peak_live + (r.steps.every(s => s.passed) ? " (maximum, not a ceiling)" : "") : "no step passed") +
     "</td><td>" + fmt(peak, 0) + "</td><td>" + (b ? fmt(server(r, b).cores_avg, 2) : "-") + "</td><td>" + (b ? fmt(server(r, b).rss_peak_mb, 0) + " MB" : "-") +
-    "</td><td>" + (b ? fmt(b.ttfb_p50_ms, 0) + " / " + fmt(b.ttfb_p99_ms, 0) + " ms" : "-") + "</td><td>" + c.start + " +" + c.step + " up to " + c.max + ", hold " + dur(c.hold) + "</td></tr>";
+    "</td><td>" + (b ? fmt(b.ttfb_p50_ms, 0) + " / " + fmt(b.ttfb_p99_ms, 0) + " ms" : "-") + "</td><td>" + c.start + " to " + (r.steps.length ? r.steps[r.steps.length - 1].target : c.start) + ", hold " + dur(c.hold) + "</td></tr>";
 }
 document.getElementById("summary").innerHTML = h;
 

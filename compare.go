@@ -141,10 +141,11 @@ func renderCompare(runs []*Run) string {
 	}
 	w("# %s\n\n", strings.Join(labels, " vs "))
 	w("## Setup\n\n")
+	w("### Servers under test\n\n")
 	for _, r := range runs {
-		w("- **%s**: %s Admitted at up to %d connections per second over the fleet, %s to connect and read the headers.\n",
-			runLabel(r), strings.TrimSpace(r.Description), r.Config.Listener.ConnectRate, r.Config.Listener.ConnectTimeout)
+		w("- **%s**: %s\n", runLabel(r), strings.TrimSpace(r.Description))
 	}
+	w("\n### Machines\n\n")
 	if h := runs[0].ServerHost; h != nil {
 		w("- server: %d cpus, %d MB, %s %s", h.CPUs, h.MemMB, h.Kernel, h.Arch)
 		if h.Liquidsoap != "" {
@@ -156,10 +157,19 @@ func renderCompare(runs []*Run) string {
 		w("- %s; each load box: %d cpus, %d MB\n", l, runs[0].Host.CPUs, runs[0].Host.MemMB)
 	}
 	c := runs[0].Config
-	w("- listeners: each one is a TCP connection sending the HTTP GET a player sends, then reading the stream for as long as the step lasts. It counts the bytes it receives, which is where the throughput figures come from, and does not decode the audio. %.0f%% of them request ICY metadata and parse every interleaved block, so the metadata framing is checked on every one of those connections. Once a second every listener's rate over the last %d s is compared with the median of its mount; a listener lagging by more than %.0f%% for %d s in a row is failed, as is one that receives nothing for %s, or that the server disconnects.\n",
-		c.Listener.ICY*100, c.Listener.Window, c.Listener.LagTolerance*100, c.Listener.LagTicks, c.Listener.Stall)
-	w("- canaries: decoding is checked separately, by one ffmpeg process per mount and step that joins the stream mid-way and must decode %s of it without error, which is what a player joining a running stream does.\n", c.CanaryDuration)
-	w("- steps: each level held for %s once reached; a step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert\n\n", c.Hold, c.FailThreshold*100)
+	w("\n### Listeners\n\n")
+	w("- A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.\n")
+	w("- It counts the bytes it receives. That is the throughput figure. It does not decode audio.\n")
+	w("- %.0f%% of listeners request ICY metadata and parse every interleaved block.\n", c.Listener.ICY*100)
+	w("- A listener fails when it receives nothing for %s, when the server disconnects it, or when its rate over the last %d s lags the median of its mount by more than %.0f%% for %d s in a row.\n", c.Listener.Stall, c.Listener.Window, c.Listener.LagTolerance*100, c.Listener.LagTicks)
+	for _, r := range runs {
+		w("- Admission against %s: up to %d new connections per second over the fleet, %s to connect and read the headers.\n", serverProcess(r), r.Config.Listener.ConnectRate, r.Config.Listener.ConnectTimeout)
+	}
+	w("\n### Canaries\n\n")
+	w("- Decoding is checked by one ffmpeg process per mount and step. It joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", c.CanaryDuration)
+	w("\n### Pass rules\n\n")
+	w("- Each level is held for %s once reached.\n", c.Hold)
+	w("- A step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert.\n\n", c.FailThreshold*100)
 	w("## Summary\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
@@ -292,6 +302,8 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 .axis { font-size:10px; fill:var(--muted); font-family:Arial, Helvetica, sans-serif; } .gridline { stroke:var(--grid); }
 .legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; } .legend span { margin-right:1rem; }
 .legend i { display:inline-block; width:12px; height:3px; margin-right:.35rem; vertical-align:middle; }
+.setup { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:.5rem 2.5rem; max-width:1000px; }
+.setup h3 { font-size:.95rem; margin:.75rem 0 .35rem; } .setup ul { margin:0; padding-left:1.2rem; } .setup li { margin:.25rem 0; max-width:60ch; }
 #diagram svg { max-width:900px; margin:.5rem 0 1rem; } .box { fill:var(--head); stroke:var(--line); } .box.server { fill:var(--bg); stroke:var(--ink); } .lbl { font-size:11px; fill:var(--ink); font-family:Arial, Helvetica, sans-serif; } .lbl.muted { fill:var(--muted); } .arrow { stroke:var(--muted); fill:none; marker-end:url(#head); }
 @media (max-width: 500px) { .grid { grid-template-columns:1fr; } body { padding-inline:1rem; } }
 </style>
@@ -302,7 +314,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <p class="muted">Same listeners, same pass rules, same server box. A cross marks a step that failed.</p>
 <h2>Setup</h2>
 <div id="diagram"></div>
-<ul id="setup"></ul>
+<div id="setup" class="setup"></div>
 <h2>Summary</h2>
 <div class="wrap"><table id="summary"></table></div>
 <h2>Over the listener count</h2>
@@ -361,12 +373,22 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
   g += "<text class='lbl muted' x='" + (serverW + 8) + "' y='" + (10 + serverH / 2 - 8) + "'>stream, internal network</text>";
   document.getElementById("diagram").innerHTML = "<svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='test architecture'>" + g + "</svg>";
 })();
-document.getElementById("setup").innerHTML = RUNS.map(r => "<li><b>" + esc(r.label) + "</b>: " + esc(r.description) + " Admitted at up to " + r.config.Listener.ConnectRate + " connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.</li>").join("") +
-  (sh ? "<li>server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") + "</li>" : "") +
-  (RUNS[0].load_boxes ? "<li>" + esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB</li>" : "") +
-  "<li>listeners: each one is a TCP connection sending the HTTP GET a player sends, then reading the stream for as long as the step lasts. It counts the bytes it receives, which is where the throughput figures come from, and does not decode the audio. " + Math.round(c0.Listener.ICY * 100) + "% of them request ICY metadata and parse every interleaved block, so the metadata framing is checked on every one of those connections. Once a second every listener's rate over the last " + c0.Listener.Window + " s is compared with the median of its mount; a listener lagging by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row is failed, as is one that receives nothing for " + dur(c0.Listener.Stall) + ", or that the server disconnects.</li>" +
-  "<li>canaries: decoding is checked separately, by one ffmpeg process per mount and step that joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, which is what a player joining a running stream does.</li>" +
-  "<li>steps: each level held for " + dur(c0.hold) + " once reached; a step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert</li>";
+const section = (title, items) => "<div><h3>" + title + "</h3><ul>" + items.map(i => "<li>" + i + "</li>").join("") + "</ul></div>";
+document.getElementById("setup").innerHTML =
+  section("Servers under test", RUNS.map(r => "<b>" + esc(r.label) + "</b>: " + esc(r.description))) +
+  section("Machines", [
+    sh ? "server: " + sh.cpus + " cpus, " + sh.mem_mb + " MB, " + esc(sh.kernel + " " + sh.arch) + (sh.liquidsoap ? ", " + esc(sh.liquidsoap) : "") : null,
+    RUNS[0].load_boxes ? esc(RUNS[0].load_boxes) + "; each load box: " + lh.cpus + " cpus, " + lh.mem_mb + " MB" : null].filter(Boolean)) +
+  section("Listeners", [
+    "A listener is a TCP connection that sends the HTTP GET a player sends and reads the stream for the whole step.",
+    "It counts the bytes it receives. That is the throughput figure. It does not decode audio.",
+    Math.round(c0.Listener.ICY * 100) + "% of listeners request ICY metadata and parse every interleaved block.",
+    "A listener fails when it receives nothing for " + dur(c0.Listener.Stall) + ", when the server disconnects it, or when its rate over the last " + c0.Listener.Window + " s lags the median of its mount by more than " + Math.round(c0.Listener.LagTolerance * 100) + "% for " + c0.Listener.LagTicks + " s in a row.",
+    ...RUNS.map(r => "Admission against " + esc(r.server) + ": up to " + r.config.Listener.ConnectRate + " new connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.")]) +
+  section("Canaries", ["Decoding is checked by one ffmpeg process per mount and step. It joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
+  section("Pass rules", [
+    "Each level is held for " + dur(c0.hold) + " once reached.",
+    "A step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert."]);
 let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>range</th></tr>";
 for (const r of RUNS) {
   const b = best(r), c = r.config;

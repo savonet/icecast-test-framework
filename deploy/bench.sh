@@ -30,7 +30,7 @@ TFVARS="-var project=$GCP_PROJECT -var zone=$ZONE -var machine_type=${MACHINE_TY
 
 ssh_box() { # ssh_box <role> <command>
   box="icetest-$1"; shift
-  gcloud compute ssh "$box" --project "$GCP_PROJECT" --zone "$ZONE" --quiet --command "$*"
+  gcloud compute ssh "$box" --project "$GCP_PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ServerAliveInterval=15" --ssh-flag="-o ServerAliveCountMax=4" --command "$*"
 }
 scp_to() { # scp_to <role> <local> <remote>
   gcloud compute scp "$2" "icetest-$1:$3" --project "$GCP_PROJECT" --zone "$ZONE" --quiet
@@ -101,15 +101,26 @@ run() {
     ssh_box server "pkill -9 -x icetest; pkill -9 -x liquidsoap; pkill -9 -x icecast; pkill -9 -x ffmpeg; sleep 1; rm -rf results/$scenario; nohup ./icetest serve --liquidsoap liquidsoap --audio audio $video_flag $WITH_FLAG $ENV_FLAGS --port 8000 scenarios/$scenario > serve.log 2>&1 &"
     until ssh_box server "ls results/$scenario/serve-*/ready" >/dev/null 2>&1; do sleep 5; done
     echo "== $scenario: ramping $START +$STEP up to $MAX over $LOAD_COUNT load box(es), hold $HOLD"
+    # The runs are detached and polled for their results: a session held open
+    # for an hour does not survive a box tearing down tens of thousands of
+    # connections.
     for role in $boxes; do
       bind="$(bind_addresses "$role")"
-      ssh_box "$role" "rm -rf results/$scenario; ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD $RUN_FLAGS $WITH_FLAG scenarios/$scenario" > "$out/$role.log" 2>&1 &
+      ssh_box "$role" "rm -rf results/$scenario; nohup ./icetest run --remote $server_ip:8000 --bind $bind --start $(share "$START") --step $(share "$STEP") --max $(share "$MAX") --hold $HOLD $RUN_FLAGS $WITH_FLAG scenarios/$scenario > run.log 2>&1 &"
     done
-    # Step lines of every box, as they land; the full output stays in the logs.
-    ( tail -q -n +1 -F $(for role in $boxes; do echo "$out/$role.log"; done) 2>/dev/null | grep --line-buffered -E "^step|^  (pass|FAIL)|^icetest:" ) &
-    tail_pid=$!
-    wait $(jobs -p | grep -v "^$tail_pid$")
-    pkill -P $tail_pid 2>/dev/null; kill $tail_pid 2>/dev/null
+    for role in $boxes; do : > "$out/$role.log"; done
+    while :; do
+      done_count=0
+      for role in $boxes; do
+        ssh_box "$role" "cat run.log; ls results/$scenario/*/run.json >/dev/null 2>&1 && echo __DONE__" > "$out/$role.new" 2>/dev/null || continue
+        grep -q "^__DONE__$" "$out/$role.new" && done_count=$((done_count + 1))
+        grep -v "^__DONE__$" "$out/$role.new" > "$out/$role.cur"
+        diff --changed-group-format='%>' --unchanged-group-format='' "$out/$role.log" "$out/$role.cur" | grep -E "^step|^  (pass|FAIL)|^icetest:" | sed "s/^/[$role] /"
+        mv "$out/$role.cur" "$out/$role.log"; rm -f "$out/$role.new"
+      done
+      [ "$done_count" -eq "$LOAD_COUNT" ] && break
+      sleep 20
+    done
     ssh_box server "pkill -INT -x icetest; while pgrep -x icetest >/dev/null; do sleep 1; done"
     for role in server $boxes; do
       gcloud compute scp --recurse "icetest-$role:results/$scenario" "$out/$role" --project "$GCP_PROJECT" --zone "$ZONE" --quiet

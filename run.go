@@ -403,7 +403,13 @@ func procSummary(s StepResult) string {
 }
 
 func waitForTarget(ctx context.Context, pool *Pool, target int, c *Config) bool {
-	deadline := time.Now().Add(2*time.Duration(target/max(c.Listener.ConnectRate, 1))*time.Second + c.Listener.ConnectTimeout + 5*time.Second)
+	live := 0
+	for _, m := range pool.Snapshot() {
+		live += m.Live
+	}
+	// Twice the time the missing listeners take to connect at the dial rate.
+	missing := max(target-live, 0)
+	deadline := time.Now().Add(2*time.Duration(missing/max(c.Listener.ConnectRate, 1))*time.Second + c.Listener.ConnectTimeout + 5*time.Second)
 	for time.Now().Before(deadline) && ctx.Err() == nil {
 		live := 0
 		for _, m := range pool.Snapshot() {

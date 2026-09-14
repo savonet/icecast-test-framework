@@ -291,7 +291,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 .axis { font-size:10px; fill:var(--muted); font-family:Arial, Helvetica, sans-serif; } .gridline { stroke:var(--grid); }
 .legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; } .legend span { margin-right:1rem; }
 .legend i { display:inline-block; width:12px; height:3px; margin-right:.35rem; vertical-align:middle; }
-#diagram svg { max-width:760px; margin:.5rem 0 1rem; } .box { fill:var(--head); stroke:var(--line); } .box.server { fill:var(--bg); stroke:var(--ink); } .lbl { font-size:11px; fill:var(--ink); font-family:Arial, Helvetica, sans-serif; } .lbl.muted { fill:var(--muted); } .arrow { stroke:var(--muted); fill:none; marker-end:url(#head); }
+#diagram svg { max-width:900px; margin:.5rem 0 1rem; } .box { fill:var(--head); stroke:var(--line); } .box.server { fill:var(--bg); stroke:var(--ink); } .lbl { font-size:11px; fill:var(--ink); font-family:Arial, Helvetica, sans-serif; } .lbl.muted { fill:var(--muted); } .arrow { stroke:var(--muted); fill:none; marker-end:url(#head); }
 @media (max-width: 500px) { .grid { grid-template-columns:1fr; } body { padding-inline:1rem; } }
 </style>
 </head>
@@ -325,11 +325,15 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
 (function () {
   const boxes = Math.max(1, ...RUNS.map(r => (r.load_boxes.match(/^load generators: (\d+)/) || [0, 1])[1] | 0));
   const lanes = RUNS.map(r => r.server === "icecast" ? ["liquidsoap: encode, output.icecast", "Icecast 2.4: listeners"] : ["liquidsoap: encode, output.harbor: listeners"]);
-  const W = 760, laneH = 26, serverH = 34 + lanes.reduce((n, l) => n + laneH, 0) + 30, loadH = 38, gap = 12;
+  const laneH = 26, serverH = 34 + lanes.reduce((n, l) => n + laneH, 0) + 30, loadH = 38, gap = 12;
+  const boxW = p => 8 + p.length * 5.6;
+  const laneW = l => l.reduce((n, p) => n + boxW(p) + 14, 0) - 14;
+  const serverW = Math.max(430, 150 + Math.max(...lanes.map(laneW)) + 12);
+  const loadX = serverW + 130, W = loadX + 200;
   const H = Math.max(serverH + 20, boxes * (loadH + gap) + 20);
   let g = "<defs><marker id='head' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'><path d='M0 0L8 4L0 8Z' fill='#666'/></marker></defs>";
   const cpuLoad = lh.cpus ? lh.cpus + " vCPU" : "", cpuServer = sh ? sh.cpus + " vCPU, " + Math.round(sh.mem_mb / 1024) + " GB" : "";
-  g += "<rect class='box server' x='10' y='10' width='430' height='" + serverH + "' rx='3'/>";
+  g += "<rect class='box server' x='10' y='10' width='" + (serverW - 10) + "' height='" + serverH + "' rx='3'/>";
   g += "<text class='lbl' x='22' y='28'>server" + (cpuServer ? " (" + cpuServer + ")" : "") + "</text>";
   let y = 44;
   RUNS.forEach((r, i) => {
@@ -337,7 +341,7 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
     g += "<text class='lbl' x='22' y='" + (y + 16) + "'>" + esc(r.server === "icecast" ? "icecast-reference" : r.label.replace(/ \(.*$/, "")) + "</text>";
     let x = 150;
     parts.forEach((p, j) => {
-      const w = 8 + p.length * 5.6;
+      const w = boxW(p);
       g += "<rect class='box' x='" + x + "' y='" + (y + 2) + "' width='" + w + "' height='" + (laneH - 6) + "' rx='2'/><text class='lbl' x='" + (x + 4) + "' y='" + (y + 15) + "'>" + esc(p) + "</text>";
       if (j < parts.length - 1) g += "<path class='arrow' d='M" + (x + w) + " " + (y + laneH / 2 - 1) + " L" + (x + w + 10) + " " + (y + laneH / 2 - 1) + "'/>";
       x += w + 14;
@@ -347,12 +351,13 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
   g += "<text class='lbl muted' x='22' y='" + (y + 18) + "'>icetest serve: starts the processes, records CPU, memory, fds and log alerts once a second</text>";
   for (let i = 0; i < boxes; i++) {
     const by = 10 + i * (loadH + gap);
-    g += "<path class='arrow' d='M440 " + (10 + serverH / 2) + " C500 " + (10 + serverH / 2) + " 500 " + (by + loadH / 2) + " 558 " + (by + loadH / 2) + "'/>";
-    g += "<rect class='box' x='560' y='" + by + "' width='190' height='" + loadH + "' rx='3'/>";
-    g += "<text class='lbl' x='570' y='" + (by + 16) + "'>load box " + (i + 1) + (cpuLoad ? " (" + cpuLoad + ")" : "") + "</text>";
-    g += "<text class='lbl muted' x='570' y='" + (by + 30) + "'>icetest run: listeners, ffmpeg canary</text>";
+    const mid = serverW + 60;
+    g += "<path class='arrow' d='M" + serverW + " " + (10 + serverH / 2) + " C" + mid + " " + (10 + serverH / 2) + " " + mid + " " + (by + loadH / 2) + " " + (loadX - 2) + " " + (by + loadH / 2) + "'/>";
+    g += "<rect class='box' x='" + loadX + "' y='" + by + "' width='190' height='" + loadH + "' rx='3'/>";
+    g += "<text class='lbl' x='" + (loadX + 10) + "' y='" + (by + 16) + "'>load box " + (i + 1) + (cpuLoad ? " (" + cpuLoad + ")" : "") + "</text>";
+    g += "<text class='lbl muted' x='" + (loadX + 10) + "' y='" + (by + 30) + "'>icetest run: listeners, ffmpeg canary</text>";
   }
-  g += "<text class='lbl muted' x='448' y='" + (10 + serverH / 2 - 8) + "'>stream, internal network</text>";
+  g += "<text class='lbl muted' x='" + (serverW + 8) + "' y='" + (10 + serverH / 2 - 8) + "'>stream, internal network</text>";
   document.getElementById("diagram").innerHTML = "<svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='test architecture'>" + g + "</svg>";
 })();
 document.getElementById("setup").innerHTML = RUNS.map(r => "<li><b>" + esc(r.label) + "</b>: " + esc(r.description) + " Admitted at up to " + r.config.Listener.ConnectRate + " connections per second over the fleet, " + dur(r.config.Listener.ConnectTimeout) + " to connect and read the headers.</li>").join("") +

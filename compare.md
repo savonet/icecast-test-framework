@@ -20,7 +20,7 @@
 ### Machines
 
 - server: 8 cpus, 32 GB, 6.12.107+deb13-cloud-amd64 amd64
-- 3 load boxes, 4 for harbor-audio (liquidsoap) from 78000 listeners up; 4 for harbor-audio (liquidsoap) FRAME=0.2 from 78000 listeners up; 3 for icecast-reference (icecast) from 22014 listeners up; 8 cpus each
+- 4 load boxes, 3 up to 77046 listeners for harbor-audio (liquidsoap), 3 up to 72000 listeners for harbor-audio (liquidsoap) FRAME=0.2; 8 cpus each
 
 ### Scale
 

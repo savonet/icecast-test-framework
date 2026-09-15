@@ -721,7 +721,6 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <body>
 <main>
 <h1 id="title"></h1>
-<p class="muted">Same listeners, same pass rules, same server box. A cross marks a step that failed.</p>
 <nav class="toc" id="toc"></nav>
 <div id="diagram"></div>
 <h2>Results</h2>

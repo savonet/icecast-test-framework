@@ -56,7 +56,8 @@
 
 ### Icecast serves from one core, liquidsoap from all of them
 
-- Icecast 2.4 serves a mount from one thread, which is a full core at 21k on a box that is 15% busy: the other seven cores sit idle while listeners wait seconds to be admitted.
+- Icecast 2.4 serves a mount from one thread by design: its source thread reads the stream, walks every listener to write to it, and admits the waiting ones in the same loop (`source_main` in `src/source.c`).
+- The measurement matches: the Icecast process never exceeds one core, 0.90 at 21k and 1.00 at the step that failed, on a box that is 15% busy. Its per-core bars below look spread only because the scheduler moves that one thread between cores.
 - liquidsoap serves a mount from eight writer tasks on OCaml 5 domains, which are 7.2 cores at 170k on a box that is 99% busy, every core at 98 to 99%.
 - The work itself costs the same on both: server CPU divided by listeners converges on about 50 µs per listener per second for all three series, Icecast 47 µs, liquidsoap 43 to 55 µs at the 0.2 s frame and 217 µs falling to 50 µs at the default frame.
 - That cost is the kernel's TCP send path, which neither server can avoid.

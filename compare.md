@@ -42,7 +42,7 @@
 ### Pass rules
 
 - Each level is held for 1m0s once reached.
-- A step fails above 1.0% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert.
+- A step passes when fewer than 1.0% of its listeners fail, the median listener receives at least 90% of the nominal bitrate, every canary decodes, and the server logs no alert.
 
 ## Summary
 

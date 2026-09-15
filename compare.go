@@ -548,7 +548,7 @@ func renderCompare(runs []*Run, docs map[string]map[string]string, notes string)
 	w("- Decoding is checked by an ffmpeg process per load box, mount and step. Each joins the stream mid-way and must decode %s of it without error, as a player joining a running stream would.\n", c.CanaryDuration)
 	w("\n### Pass rules\n\n")
 	w("- Each level is held for %s once reached.\n", c.Hold)
-	w("- A step fails above %.1f%% failed listeners, on a median rate under 90%% of nominal, on a canary that cannot decode, or on a server log alert.\n\n", c.FailThreshold*100)
+	w("- A step passes when fewer than %.1f%% of its listeners fail, the median listener receives at least 90%% of the nominal bitrate, every canary decodes, and the server logs no alert.\n\n", c.FailThreshold*100)
 	w("## Summary\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
@@ -826,7 +826,7 @@ document.getElementById("setup").innerHTML =
   section("Canaries", ["Decoding is checked by an ffmpeg process per load box, mount and step. Each joins the stream mid-way and must decode " + dur(c0.canary_duration) + " of it without error, as a player joining a running stream would."]) +
   section("Pass rules", [
     "Each level is held for " + dur(c0.hold) + " once reached.",
-    "A step fails above " + (c0.fail_threshold * 100).toFixed(1) + "% failed listeners, on a median rate under 90% of nominal, on a canary that cannot decode, or on a server log alert."]);
+    "A step passes when fewer than " + (c0.fail_threshold * 100).toFixed(1) + "% of its listeners fail, the median listener receives at least 90% of the nominal bitrate, every canary decodes, and the server logs no alert."]);
 let h = "<tr><th>run</th><th>enabled</th><th>ceiling</th><th>Mbit/s at ceiling</th><th>server cores at ceiling</th><th>server RSS at ceiling</th><th>ttfb p50 / p99 at ceiling</th><th>range</th></tr>";
 for (const r of RUNS) {
   const b = best(r), c = r.config;

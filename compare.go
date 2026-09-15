@@ -259,16 +259,20 @@ func serverEntries(runs []*Run, docs map[string]map[string]string) []serverEntry
 	return out
 }
 
-// A loadSpan is a stretch of a series driven by the same number of load
-// boxes; the fleet can grow between the ramps folded into one scenario.
+// A loadSpan is a stretch of passed levels driven by the same number of
+// load boxes; the fleet can grow between the ramps folded into one scenario.
 type loadSpan struct {
 	Boxes int `json:"boxes"`
 	From  int `json:"from"`
+	To    int `json:"to"`
 }
 
 func loadSpans(r *Run) []loadSpan {
 	var out []loadSpan
 	for _, s := range r.Steps {
+		if !s.Passed {
+			continue
+		}
 		n := 0
 		for name := range s.Processes {
 			if isLoadGenerator(name) {
@@ -276,34 +280,43 @@ func loadSpans(r *Run) []loadSpan {
 			}
 		}
 		if len(out) == 0 || out[len(out)-1].Boxes != n {
-			out = append(out, loadSpan{n, s.Target})
+			out = append(out, loadSpan{n, s.Target, s.Target})
 		}
+		out[len(out)-1].To = s.Target
 	}
 	return out
 }
 
-// loadBoxesText says how many load boxes there were, and where more joined.
+// loadBoxesText says how many load boxes drove the ceilings, and which
+// levels were driven by fewer.
 func loadBoxesText(runs []*Run) string {
-	lo, hi := 0, 0
-	var more []string
+	hi := 0
 	for _, r := range runs {
-		for i, sp := range loadSpans(r) {
-			if lo == 0 || sp.Boxes < lo {
-				lo = sp.Boxes
-			}
+		for _, sp := range loadSpans(r) {
 			hi = max(hi, sp.Boxes)
-			if i > 0 {
-				more = append(more, fmt.Sprintf("%d for %s from %d listeners up", sp.Boxes, runLabel(r), sp.From))
+		}
+	}
+	if hi == 0 {
+		return ""
+	}
+	fewer := map[string][]string{}
+	var order []string
+	for _, r := range runs {
+		for _, sp := range loadSpans(r) {
+			if sp.Boxes < hi {
+				key := fmt.Sprintf("%d up to %d listeners", sp.Boxes, sp.To)
+				if _, seen := fewer[key]; !seen {
+					order = append(order, key)
+				}
+				fewer[key] = append(fewer[key], runLabel(r))
 			}
 		}
 	}
-	if lo == 0 {
-		return ""
+	text := fmt.Sprintf("%d load boxes", hi)
+	for _, key := range order {
+		text += fmt.Sprintf(", %s for %s", key, strings.Join(fewer[key], " and "))
 	}
-	if lo == hi {
-		return fmt.Sprintf("%d load boxes", lo)
-	}
-	return fmt.Sprintf("%d load boxes, %s", lo, strings.Join(more, "; "))
+	return text
 }
 
 // serverFacts is what ran, read from the run rather than written by hand:
@@ -685,7 +698,7 @@ th:first-child, td:first-child { text-align:left; } th { background:var(--head);
 .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:1.5rem 2rem; }
 svg { width:100%; height:auto; display:block; max-width:100%; }
 .axis { font-size:10px; fill:var(--muted); font-family:Arial, Helvetica, sans-serif; } .gridline { stroke:var(--grid); }
-.legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; } .legend span { margin-right:1rem; }
+.legend { font-size:.8rem; color:var(--muted); margin-top:.2rem; display:flex; flex-wrap:wrap; gap:.2rem 1rem; } .legend span { margin:0; }
 .legend i { display:inline-block; width:12px; height:3px; margin-right:.35rem; vertical-align:middle; }
 .cores { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:1rem 2rem; max-width:1100px; } .cores h3 { font-size:.95rem; margin:.5rem 0 .25rem; }
 .cores svg { max-width:340px; } .mem.free { fill:var(--head); stroke:var(--line); } .mem.rss { fill:var(--ink); } .mem.sock { fill:var(--ink); opacity:.55; } .mem.other { fill:var(--ink); opacity:.25; } .cores .bar { fill:var(--ink); opacity:.75; } .cores .bar.hot { opacity:1; } .cores p { margin:.25rem 0 0; font-size:.85rem; color:var(--muted); max-width:40ch; }
@@ -695,7 +708,14 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 .notes { max-width:70ch; } .notes h3 { font-size:1rem; margin:1rem 0 .3rem; } .notes p, .notes li { line-height:1.45; }
 .setup h3 { font-size:.95rem; margin:.75rem 0 .35rem; } .setup ul { margin:0; padding-left:1.2rem; } .setup li { margin:.25rem 0; max-width:60ch; }
 #diagram svg { max-width:900px; margin:.5rem 0 1rem; } .box { fill:var(--head); stroke:var(--line); } .box.server { fill:var(--bg); stroke:var(--ink); } .lbl { font-size:11px; fill:var(--ink); font-family:Arial, Helvetica, sans-serif; } .lbl.muted { fill:var(--muted); } .arrow { stroke:var(--muted); fill:none; marker-end:url(#head); }
-@media (max-width: 500px) { .grid { grid-template-columns:1fr; } body { padding-inline:1rem; } }
+#diagram { overflow-x:auto; } #diagram svg { min-width:720px; }
+.toc { display:flex; flex-wrap:wrap; gap:.3rem 1.2rem; } .toc a { margin:0; }
+@media (max-width: 640px) {
+  body { padding-inline:1rem; } h1 { font-size:1.25rem; }
+  .grid, .setup, .cores { grid-template-columns:1fr; }
+  .setup li { max-width:none; } .headline td:nth-child(2) { font-size:1.05rem; }
+  .cores svg { max-width:none; }
+}
 </style>
 </head>
 <body>
@@ -737,7 +757,9 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
 (function () {
   const spans = RUNS.flatMap(r => r.load_spans || []);
   const boxes = Math.max(1, ...spans.map(s => s.boxes)), always = Math.min(...spans.map(s => s.boxes));
-  const joinedAt = Math.min(...spans.filter(s => s.boxes > always).map(s => s.from));
+  // Where the extra boxes joined: the first level driven by the full fleet
+  // in a series that had fewer boxes before it.
+  const joinedAt = Math.min(...RUNS.filter(r => (r.load_spans || []).some(s => s.boxes < boxes)).flatMap(r => r.load_spans.filter(s => s.boxes === boxes).map(s => s.from)));
   const lanes = RUNS.map(r => r.server === "icecast" ? ["liquidsoap: encode, output.icecast", "Icecast 2.4: listeners"] : ["liquidsoap: encode, output.harbor: listeners"]);
   const laneH = 26, serverH = 34 + lanes.reduce((n, l) => n + laneH, 0) + 30, loadH = 38, gap = 12;
   const boxW = p => 8 + p.length * 5.6;
@@ -776,11 +798,14 @@ const c0 = RUNS[0].config, sh = RUNS[0].server_host, lh = RUNS[0].host;
 })();
 const section = (title, items) => "<div><h3>" + title + "</h3><ul>" + items.map(i => "<li>" + i + "</li>").join("") + "</ul></div>";
 function loadBoxesText() {
-  const spans = RUNS.flatMap(r => (r.load_spans || []).map((s, i) => ({ ...s, run: r.label, first: i === 0 })));
+  const spans = RUNS.flatMap(r => (r.load_spans || []).map(s => ({ ...s, run: r.label })));
   if (!spans.length) return "";
-  const lo = Math.min(...spans.map(s => s.boxes)), hi = Math.max(...spans.map(s => s.boxes));
-  if (lo === hi) return lo + " load boxes";
-  return lo + " load boxes, " + spans.filter(s => !s.first).map(s => s.boxes + " for " + esc(s.run) + " from " + s.from + " listeners up").join("; ");
+  const hi = Math.max(...spans.map(s => s.boxes)), fewer = new Map();
+  for (const s of spans.filter(s => s.boxes < hi)) {
+    const key = s.boxes + " up to " + s.to + " listeners";
+    fewer.set(key, (fewer.get(key) || []).concat(esc(s.run)));
+  }
+  return hi + " load boxes" + [...fewer].map(([key, runs]) => ", " + key + " for " + runs.join(" and ")).join("");
 }
 document.getElementById("notes").innerHTML = NOTES;
 document.getElementById("setup").innerHTML =
@@ -874,7 +899,8 @@ document.getElementById("steps").innerHTML = t;
 // limit is what the server box has of the plotted quantity: drawn as a
 // dashed line when the series come near it, named in the legend otherwise.
 function chart(title, unit, value, limit) {
-  const W = 600, H = 250, L = 54, R = 14, T = 16, B = 30;
+  const narrow = window.innerWidth < 640;
+  const W = narrow ? 380 : 600, H = narrow ? 220 : 250, L = 48, R = 14, T = 16, B = 30;
   const series = RUNS.map(r => ({ name: r.label, points: r.steps.map(s => [s.peak_live, value(r, s), !s.passed]).filter(p => p[1] != null && !isNaN(p[1])) }));
   const xs = series.flatMap(s => s.points.map(p => p[0])), ys = series.flatMap(s => s.points.map(p => p[1]));
   if (!xs.length) return;

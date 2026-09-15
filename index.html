@@ -46,12 +46,12 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <h1 id="title"></h1>
 <nav class="toc" id="toc"></nav>
 <div id="diagram"></div>
-<h2>Results</h2>
+<h2>Summary</h2>
 <div class="wrap"><table class="headline"><tr><th></th><th>listeners held</th><th>arrivals*</th><th>admission p50 / p99</th></tr><tr><td>harbor-audio (liquidsoap)</td><td>148k</td><td>300/s, 10s connect timeout</td><td>315 ms / 9.3 s</td></tr><tr><td>harbor-audio (liquidsoap) FRAME=0.2</td><td>170k</td><td>300/s, 10s connect timeout</td><td>268 ms / 1.3 s</td></tr><tr><td>icecast-reference (icecast)</td><td>21k</td><td>60/s, 1m0s connect timeout</td><td>563 ms / 7.6 s</td></tr></table></div>
 <p class="muted footnote">* The arrival rate and connect timeout, the deadline for the TCP connect and the HTTP response headers, are the test settings under which the ramp passed, not a measured limit: Icecast could not keep up with the 300 per second the liquidsoap ramps used.</p>
 <h2>Setup</h2>
 <div id="setup" class="setup"></div>
-<h2>Detailed results</h2>
+<h2>Results</h2>
 <div class="wrap"><table id="summary"></table></div>
 <div id="notes" class="notes"></div>
 <div id="machine"></div>

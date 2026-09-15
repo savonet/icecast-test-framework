@@ -1,6 +1,6 @@
 # harbor-audio (liquidsoap) vs harbor-audio (liquidsoap) FRAME=0.2 vs icecast-reference (icecast)
 
-## Results
+## Summary
 
 | | listeners held | arrivals* | admission p50 / p99 |
 |---|---|---|---|
@@ -44,7 +44,7 @@
 - Each level is held for 1m0s once reached.
 - A step passes when fewer than 1.0% of its listeners fail, the median listener receives at least 90% of the nominal bitrate, every canary decodes, and the server logs no alert.
 
-## Detailed results
+## Results
 
 | run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |
 |---|---|---|---|---|---|---|---|

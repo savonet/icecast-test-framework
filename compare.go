@@ -513,7 +513,7 @@ func renderCompare(runs []*Run, docs map[string]map[string]string, notes string)
 	}
 	w("# %s\n\n", strings.Join(labels, " vs "))
 	if rows := headline(runs); len(rows) > 0 {
-		w("## Results\n\n| | listeners held | arrivals* | admission p50 / p99 |\n|---|---|---|---|\n")
+		w("## Summary\n\n| | listeners held | arrivals* | admission p50 / p99 |\n|---|---|---|---|\n")
 		for _, row := range rows {
 			w("| **%s** | **%s** | %s | %s |\n", row[0], row[1], row[2], row[3])
 		}
@@ -549,7 +549,7 @@ func renderCompare(runs []*Run, docs map[string]map[string]string, notes string)
 	w("\n### Pass rules\n\n")
 	w("- Each level is held for %s once reached.\n", c.Hold)
 	w("- A step passes when fewer than %.1f%% of its listeners fail, the median listener receives at least 90%% of the nominal bitrate, every canary decodes, and the server logs no alert.\n\n", c.FailThreshold*100)
-	w("## Detailed results\n\n")
+	w("## Results\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
 		best := bestStep(r)
@@ -723,12 +723,12 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <h1 id="title"></h1>
 <nav class="toc" id="toc"></nav>
 <div id="diagram"></div>
-<h2>Results</h2>
+<h2>Summary</h2>
 <div class="wrap"><table class="headline">__HEADLINE__</table></div>
 <p class="muted footnote">* The arrival rate and connect timeout, the deadline for the TCP connect and the HTTP response headers, are the test settings under which the ramp passed, not a measured limit: Icecast could not keep up with the 300 per second the liquidsoap ramps used.</p>
 <h2>Setup</h2>
 <div id="setup" class="setup"></div>
-<h2>Detailed results</h2>
+<h2>Results</h2>
 <div class="wrap"><table id="summary"></table></div>
 <div id="notes" class="notes"></div>
 <div id="machine"></div>

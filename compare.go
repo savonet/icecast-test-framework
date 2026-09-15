@@ -549,7 +549,7 @@ func renderCompare(runs []*Run, docs map[string]map[string]string, notes string)
 	w("\n### Pass rules\n\n")
 	w("- Each level is held for %s once reached.\n", c.Hold)
 	w("- A step passes when fewer than %.1f%% of its listeners fail, the median listener receives at least 90%% of the nominal bitrate, every canary decodes, and the server logs no alert.\n\n", c.FailThreshold*100)
-	w("## Summary\n\n")
+	w("## Detailed results\n\n")
 	w("| run | enabled | ceiling | Mbit/s at ceiling | server cores at ceiling | server RSS at ceiling | ttfb p50 / p99 at ceiling | range |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range runs {
 		best := bestStep(r)
@@ -728,7 +728,7 @@ svg { width:100%; height:auto; display:block; max-width:100%; }
 <p class="muted footnote">* The arrival rate and connect timeout, the deadline for the TCP connect and the HTTP response headers, are the test settings under which the ramp passed, not a measured limit: Icecast could not keep up with the 300 per second the liquidsoap ramps used.</p>
 <h2>Setup</h2>
 <div id="setup" class="setup"></div>
-<h2>Summary</h2>
+<h2>Detailed results</h2>
 <div class="wrap"><table id="summary"></table></div>
 <div id="notes" class="notes"></div>
 <div id="machine"></div>

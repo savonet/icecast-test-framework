@@ -249,7 +249,7 @@ func serverEntries(runs []*Run, docs map[string]map[string]string) []serverEntry
 		for _, kv := range r.ServerEnv {
 			name, _, _ := strings.Cut(kv, "=")
 			if doc := docs[r.Scenario][name]; doc != "" {
-				parts = append(parts, kv+", which "+doc)
+				parts = append(parts, kv+" ("+doc+")")
 			} else {
 				parts = append(parts, kv)
 			}

@@ -1,5 +1,5 @@
 {
-  "description": "Reference point: the same liquidsoap encoder pushes the stream with output.icecast into Icecast 2.4.4, the Debian 13 package with its client limit raised to 250000, on the same box; Icecast serves the listeners.",
+  "description": "Reference point: the same liquidsoap encoder feeds Icecast 2.4.4 on the same box through output.icecast, and Icecast serves the listeners.",
   "templates": [
     "icecast.xml.tmpl"
   ],

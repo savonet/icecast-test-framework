@@ -1,8 +1,6 @@
 {
-  "description": "liquidsoap encodes the stream once and serves every listener itself through output.harbor: the encoded bytes go into one shared ring per mount, and one writer task per core flushes its share of the listeners from it.",
-  "settings": {
-    "FRAME": "sets settings.frame.duration, the length of one streaming cycle in seconds; the default is 0.04, and every listener gets one write per cycle"
-  },
+  "description": "liquidsoap encodes the stream once and serves the listeners itself through output.harbor.",
+  "settings": {"FRAME": "settings.frame.duration, 0.04 s by default"},
   "processes": [
     {
       "name": "liquidsoap",

@@ -14,8 +14,8 @@
 
 ### Servers under test
 
-- **harbor-audio (liquidsoap)**: liquidsoap encodes the stream once and serves every listener itself through output.harbor: the encoded bytes go into one shared ring per mount, and one writer task per core flushes its share of the listeners from it. (Liquidsoap 2.5.0+git@a079cb9; /mp3 at 128 kbit/s) Measured with default settings, and with FRAME=0.2, which sets settings.frame.duration, the length of one streaming cycle in seconds; the default is 0.04, and every listener gets one write per cycle.
-- **icecast-reference (icecast)**: Reference point: the same liquidsoap encoder pushes the stream with output.icecast into Icecast 2.4.4, the Debian 13 package with its client limit raised to 250000, on the same box; Icecast serves the listeners. (Liquidsoap 2.5.0+git@5e48837; /mp3 at 128 kbit/s)
+- **harbor-audio (liquidsoap)**: liquidsoap encodes the stream once and serves the listeners itself through output.harbor. (Liquidsoap 2.5.0+git@a079cb9; /mp3 at 128 kbit/s) Measured with default settings, and with FRAME=0.2 (settings.frame.duration, 0.04 s by default).
+- **icecast-reference (icecast)**: Reference point: the same liquidsoap encoder feeds Icecast 2.4.4 on the same box through output.icecast, and Icecast serves the listeners. (Liquidsoap 2.5.0+git@5e48837; /mp3 at 128 kbit/s)
 
 ### Machines
 
